@@ -2,12 +2,17 @@
 CC      ?= gcc
 BUILD   ?= build
 CFLAGS  ?= -O2 -g
-RTFLAGS  = $(CFLAGS) -Wall -Wno-unused-function -Wno-unused-variable -fno-pie -fno-stack-protector \
-           -fcf-protection=none -fno-strict-aliasing -D_FILE_OFFSET_BITS=64 -Iruntime
+RTFLAGS  = $(CFLAGS) -Wall -Wno-unused-function -Wno-unused-variable -fno-pie -mcmodel=large \
+           -fno-stack-protector -fcf-protection=none -fno-strict-aliasing -D_FILE_OFFSET_BITS=64 -Iruntime
 TOOLFLAGS = $(CFLAGS) -Wall
 
-RT_SRCS := $(wildcard runtime/*.c) $(wildcard runtime/controls/*.c)
-RT_OBJS := $(patsubst runtime/%.c,$(BUILD)/rt/%.o,$(RT_SRCS))
+# Runtime sources compiled into libanywin.o come only from runtime/SCOPED_SRCS
+# (one path per line, '#' comments). Listed paths that do not exist yet are dropped
+# by $(wildcard); deferred files (e.g. runtime/ws2_32.c) stay on disk, unlisted.
+SCOPED_LIST := runtime/SCOPED_SRCS
+SCOPED_SRCS := $(shell sed 's/#.*//' $(SCOPED_LIST) 2>/dev/null)
+RT_SRCS     := $(wildcard $(SCOPED_SRCS))
+RT_OBJS     := $(patsubst runtime/%.c,$(BUILD)/rt/%.o,$(RT_SRCS))
 RT_HDRS := $(wildcard runtime/*.h) $(wildcard runtime/controls/*.h)
 
 all: $(BUILD)/anywin $(BUILD)/libanywin.o

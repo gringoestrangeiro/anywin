@@ -1,5 +1,6 @@
 /* kernel32: handle table, threads and synchronization */
 #include "aw.h"
+#include "k32.h"
 #include <errno.h>
 #include <linux/futex.h>
 #include <pthread.h>
@@ -11,6 +12,7 @@
 struct aw_object {
     int type;
     int refs;
+    int inherit;
     /* file */
     int fd;
     int console;
@@ -92,6 +94,7 @@ int aw_handle_fd(HANDLE h)
 }
 
 /* accessors used by file.c */
+static void signal_all(void);
 int aw_obj_fd(aw_object *o) { return o->fd; }
 void aw_obj_set_fd(aw_object *o, int fd) { o->fd = fd; }
 int aw_obj_type(aw_object *o) { return o->type; }
@@ -99,6 +102,19 @@ void **aw_obj_ext(aw_object *o) { return &o->ext; }
 char **aw_obj_path(aw_object *o) { return &o->path; }
 int *aw_obj_delete_on_close(aw_object *o) { return &o->delete_on_close; }
 int *aw_obj_console(aw_object *o) { return &o->console; }
+int *aw_obj_inherit(aw_object *o) { return &o->inherit; }
+
+void aw_obj_signal(aw_object *o)
+{
+    pthread_mutex_lock(&wait_lock);
+    o->signaled = 1;
+    signal_all();
+    pthread_mutex_unlock(&wait_lock);
+}
+int aw_obj_is_signaled(aw_object *o)
+{
+    return o->signaled;
+}
 
 extern void aw_file_close(aw_object *o);
 
@@ -120,6 +136,8 @@ API(kernel32, BOOL, CloseHandle, (HANDLE h))
     if (last) {
         if (o->type == H_FILE || o->type == H_FIND || o->type == H_MAPPING)
             aw_file_close(o);
+        if (o->type == H_PROCESS)
+            aw_process_close(o);
         if (o->type == H_THREAD && o->finished)
             pthread_detach(o->thread);
         else if (o->type != H_THREAD) {
@@ -334,6 +352,26 @@ API(kernel32, DWORD_PTR, SetThreadAffinityMask, (HANDLE h, DWORD_PTR m)) { retur
 API(kernel32, HRESULT, SetThreadDescription, (HANDLE h, const WCHAR *d)) { return 0; }
 API(kernel32, BOOL, SwitchToThread, (void)) { sched_yield(); return TRUE; }
 API(kernel32, DWORD, GetCurrentProcessorNumber, (void)) { return (DWORD)sched_getcpu(); }
+
+API(kernel32, void, Sleep, (DWORD ms))
+{
+    if (ms == 0) {
+        sched_yield();
+        return;
+    }
+    struct timespec ts = {(time_t)(ms / 1000), (long)(ms % 1000) * 1000000L};
+    while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+        ;
+}
+API(kernel32, DWORD, SleepEx, (DWORD ms, BOOL alertable))
+{
+    if (alertable && aw_apc_run(aw_current_tid()))
+        return 192; /* WAIT_IO_COMPLETION */
+    __aw_kernel32_Sleep(ms);
+    if (alertable && aw_apc_run(aw_current_tid()))
+        return 192;
+    return 0;
+}
 
 /* ---- waitable objects ------------------------------------------------------ */
 static HANDLE find_named(int type, const char *name)
@@ -682,7 +720,12 @@ int aw_obj_finished(aw_object *o) { return o->finished; }
 API(kernel32, DWORD, WaitForSingleObject, (HANDLE h, DWORD ms)) { return aw_wait_multiple(1, &h, FALSE, ms); }
 API(kernel32, DWORD, WaitForSingleObjectEx, (HANDLE h, DWORD ms, BOOL alertable))
 {
-    return aw_wait_multiple(1, &h, FALSE, ms);
+    if (alertable && aw_apc_run(aw_current_tid()))
+        return 192;
+    DWORD r = aw_wait_multiple(1, &h, FALSE, ms);
+    if (alertable && r == 258 && aw_apc_run(aw_current_tid()))
+        return 192;
+    return r;
 }
 API(kernel32, DWORD, WaitForMultipleObjects, (DWORD n, const HANDLE *h, BOOL all, DWORD ms))
 {
@@ -690,7 +733,12 @@ API(kernel32, DWORD, WaitForMultipleObjects, (DWORD n, const HANDLE *h, BOOL all
 }
 API(kernel32, DWORD, WaitForMultipleObjectsEx, (DWORD n, const HANDLE *h, BOOL all, DWORD ms, BOOL alertable))
 {
-    return aw_wait_multiple(n, h, all, ms);
+    if (alertable && aw_apc_run(aw_current_tid()))
+        return 192;
+    DWORD r = aw_wait_multiple(n, h, all, ms);
+    if (alertable && r == 258 && aw_apc_run(aw_current_tid()))
+        return 192;
+    return r;
 }
 API(kernel32, DWORD, SignalObjectAndWait, (HANDLE sig, HANDLE wait, DWORD ms, BOOL alertable))
 {
@@ -701,7 +749,12 @@ API(kernel32, DWORD, SignalObjectAndWait, (HANDLE sig, HANDLE wait, DWORD ms, BO
         __aw_kernel32_ReleaseMutex(sig);
     else if (o && o->type == H_SEM)
         __aw_kernel32_ReleaseSemaphore(sig, 1, NULL);
-    return aw_wait_multiple(1, &wait, FALSE, ms);
+    if (alertable && aw_apc_run(aw_current_tid()))
+        return 192;
+    DWORD r = aw_wait_multiple(1, &wait, FALSE, ms);
+    if (alertable && r == 258 && aw_apc_run(aw_current_tid()))
+        return 192;
+    return r;
 }
 
 /* ---- futex based primitives ------------------------------------------------ */
