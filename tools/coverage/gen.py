@@ -348,16 +348,31 @@ def pct_colour(p):
     return "#4c1" if p >= 90 else "#97ca00" if p >= 70 else "#dfb317" if p >= 40 else "#fe7d37"
 
 
-def update_readme(summary):
-    path = ROOT / "README.md"
-    original = text = path.read_text(encoding="utf-8")
+def finalize_images():
+    """Rename the generated images with a content hash so browsers cannot keep
+    showing a stale map after a coverage update."""
+    stable = [IMG / "progress.svg"]
+    stable += sorted(p for p in IMG.glob("badge-*.svg") if re.fullmatch(r"badge-[a-z-]+\.svg", p.name))
     digest = hashlib.sha1()
-    for image in sorted(IMG.glob("*.svg")):
-        digest.update(image.name.encode())
+    for image in stable:
         digest.update(image.read_bytes())
     version = digest.hexdigest()[:10]
-    text = re.sub(r"(docs/img/(?:progress|badge-[a-z-]+)\.svg)(?:\?v=[0-9a-f]+)?",
-                  rf"\1?v={version}", text)
+    keep = set()
+    for image in stable:
+        target = IMG / f"{image.stem}-{version}.svg"
+        image.replace(target)
+        keep.add(target.name)
+    for image in IMG.glob("*.svg"):
+        if image.name not in keep:
+            image.unlink()
+    return version
+
+
+def update_readme(summary, version):
+    path = ROOT / "README.md"
+    original = text = path.read_text(encoding="utf-8")
+    text = re.sub(r"docs/img/(progress|badge-[a-z-]+)(?:-[0-9a-f]{10})?\.svg(?:\?v=[0-9a-f]+)?",
+                  rf"docs/img/\1-{version}.svg", text)
     block = (
         "<!-- coverage-text:start -->\n"
         f"**Windows APIs implemented: {summary['win32_coverage']['implemented']:,} / "
@@ -425,6 +440,7 @@ def main():
     badge("imports", "sample imports", f"{imp_pct:.2f}%", pct_colour(imp_pct))
     badge("programs", "sample programs", str(len(corpus)), "#007ec6")
     badge("apis", "runtime exports", str(sum(len(v) for v in exports.values())), "#007ec6")
+    image_version = finalize_images()
 
     modules = []
     for module, names in inventory.items():
@@ -480,7 +496,7 @@ def main():
         "missing_imports": [{"module": m, "function": n} for m, n in missing],
     }
     (HERE / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
-    update_readme(summary)
+    update_readme(summary, image_version)
 
     lines = [
         "# Windows API coverage",
