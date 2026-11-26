@@ -64,6 +64,56 @@ Not done or not tested yet:
 * ListView type-ahead, rubber-band selection, column drag reorder; multiline Edit; undo.
 * DIB sections, `BitBlt` from bitmaps, palettes, paths, C++ exceptions, networking, COM.
 
+## Benchmark: anywin vs Wine 11.11 (Staging)
+
+Reproduce with `python3 -I tests/bench.py [runs]` (needs `Xvfb`, `xdotool`, `wine`). It uses a private
+Xvfb display, a throw-away `HOME` and a fresh `WINEPREFIX`. Numbers below are medians of 7 runs on
+one machine (12 cores, Linux 6.18, Xvfb, no window manager), 2026-11-26. `todo.exe` is the GUI
+program; `bench_cpu.exe` (`tests/bench_cpu.c`, MinGW `-O2`) is the same binary for both.
+
+**todo.exe (GUI)**
+
+| | anywin | Wine 11.11 |
+|---|---|---|
+| Time to window visible | **15 ms** | 558 ms |
+| Memory, RSS (all processes) | **7.7 MB** | 451 MB |
+| Memory, PSS (shared counted once) | **7.7 MB** | 195 MB |
+| Processes | **1** | 9 |
+| Idle CPU (5 s) | **0.0 %** | 1.4 % |
+| On-disk size of the program | 3.4 MB, single static ELF | needs `todo.exe` + Wine install (491 MB in `/usr/lib/wine`) + 375 MB prefix |
+| One-time setup | relink 106 ms | prefix init ~10 s |
+
+**Console hello world, process start to exit**
+
+| anywin | Wine, cold (no wineserver) | Wine, warm (wineserver running) |
+|---|---|---|
+| **1.2 ms** | 466 ms | 7.6 ms |
+
+**CPU / CRT micro-benchmark** (`bench_cpu.exe`, lower is better)
+
+| Test | anywin | Wine |
+|---|---|---|
+| 400M-iteration integer loop | 396 ms | 388 ms |
+| 6M malloc/free | **59 ms** | 242 ms |
+| sort 4M integers | 325 ms | 322 ms |
+| 1.5M `snprintf` (ints, string, float) | 836 ms | **354 ms** |
+| memcpy 2 GB (1 MB blocks) | 137 ms | **81 ms** |
+| Total | 1756 ms | **1388 ms** |
+
+Reading the results:
+
+* Startup and memory are where anywin wins by a wide margin: no wineserver, no prefix, no
+  loaded Windows DLLs, one small process.
+* Plain compute is the same (it is native x86-64 code either way). `malloc` is faster because it
+  uses glibc's allocator directly.
+* anywin is currently **slower** at `snprintf` (about 2.4x) and `memcpy` (about 1.7x). The
+  printf engine formats floats by calling glibc `snprintf` once per conversion, and `memcpy`
+  goes through the Windows-calling-convention wrapper. Neither has been profiled or optimized yet.
+* Caveats: one machine; the GUI startup time is polled with `xdotool` every few milliseconds, so
+  treat it as accurate to roughly 10-20 ms; Wine runs include starting a fresh wineserver each
+  time; only one small GUI program and one synthetic CRT test were measured, so this says nothing
+  about large applications or Wine's much wider API coverage.
+
 ## Design rules
 
 * Implement general Win32 mechanisms, never application-specific behavior (no checks on
@@ -94,7 +144,7 @@ make test      # tests/run.sh: hooks, imports, hello_console, hello_gui, todo sm
 
 Package tests (run individually): `core_env`, `core_stdio`, `core_gui`, `core_gui_controls`,
 `core_menu`, `core_scroll`, `core_registry`, `core_seh`, `core_tray`, `gdi_render`,
-`region_unit`, `listview_unit`, `x11_font`. Tests that open windows always use `xvfb-run`.
+`region_unit`, `listview_unit`, `x11_font`. `tests/bench.py` is the Wine comparison, not part of `make test`. Tests that open windows always use `xvfb-run`.
 
 ## Known issues
 
