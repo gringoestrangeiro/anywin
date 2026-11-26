@@ -33,6 +33,7 @@ static void btn_notify(HWND hwnd, UINT code)
 {
     btn_t *b = ctl_get(hwnd);
     int style = (int)btn_style(hwnd);
+    TRACE("button %p notify code=%u enabled=%d", (void *)hwnd, code, btn_enabled(hwnd));
     if (style & BS_NOTIFY)
         ctl_command(hwnd, code);
     else if (code == BN_CLICKED)

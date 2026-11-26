@@ -35,3 +35,6 @@ runtime/controls/combo.c
 runtime/menu_popup.c
 runtime/msgbox.c
 runtime/user32_scroll.c
+runtime/advapi32.c
+runtime/shell32.c
+runtime/seh.c

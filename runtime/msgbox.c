@@ -367,6 +367,13 @@ static int mb_show(HWND owner, const WCHAR *text, const WCHAR *caption, UINT typ
     s.text = text;
     s.type = type;
     s.pressed = -1;
+    if (aw_debug) {
+        char *t = aw_w2u(text ? text : u"", -1);
+        char *c = aw_w2u(caption ? caption : u"", -1);
+        TRACE("MessageBox caption=\"%s\" text=\"%s\" type=%#x", c ? c : "", t ? t : "", (unsigned)type);
+        free(t);
+        free(c);
+    }
     s.nbtn = mb_build_buttons(type, s.btn);
     s.defbtn = mb_default_index(type, s.nbtn);
     s.focus = s.defbtn;

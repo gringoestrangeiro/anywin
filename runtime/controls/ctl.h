@@ -655,7 +655,7 @@ enum {
 #define EN_CHANGE 0x0300
 #define EN_UPDATE 0x0400
 #define EN_ERRSPACE 0x0500
-#define EN_MAXTEXT 0x0601
+#define EN_MAXTEXT 0x0501
 #define EN_HSCROLL 0x0601
 #define EN_VSCROLL 0x0602
 #define EN_ALIGN_LTR_EC 0x0700

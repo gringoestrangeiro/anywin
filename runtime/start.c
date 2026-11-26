@@ -159,7 +159,8 @@ static void init_tls_directory(void)
 }
 
 /* ---- crash reporting ------------------------------------------------------ */
-static void crash_handler(int sig, siginfo_t *si, void *uc_)
+/* Report a fault that no exception handler resumed (called by seh.c before the process exits). */
+void aw_crash_report(int sig, siginfo_t *si, void *uc_)
 {
     ucontext_t *uc = uc_;
     uint64_t rip = uc->uc_mcontext.gregs[REG_RIP];
@@ -173,21 +174,11 @@ static void crash_handler(int sig, siginfo_t *si, void *uc_)
             uc->uc_mcontext.gregs[REG_RAX], uc->uc_mcontext.gregs[REG_RBX], uc->uc_mcontext.gregs[REG_RCX],
             uc->uc_mcontext.gregs[REG_RDX], uc->uc_mcontext.gregs[REG_RSI], uc->uc_mcontext.gregs[REG_RDI],
             uc->uc_mcontext.gregs[REG_RSP], uc->uc_mcontext.gregs[REG_RBP]);
-    signal(sig, SIG_DFL);
-    raise(sig);
 }
 
 extern void aw_kernel32_init(int argc, char **argv, char **envp);
 extern void aw_seh_init(void);
 extern void aw_msvcrt_init(void);
-extern int aw_seh_signal(int sig, siginfo_t *si, void *uc);
-
-static void fault_handler(int sig, siginfo_t *si, void *uc)
-{
-    if (aw_seh_signal(sig, si, uc))
-        return;
-    crash_handler(sig, si, uc);
-}
 
 int main(int argc, char **argv, char **envp)
 {
@@ -217,13 +208,7 @@ int main(int argc, char **argv, char **envp)
     aw_msvcrt_init();
     aw_seh_init();
 
-    struct sigaction sa = {0};
-    sa.sa_sigaction = fault_handler;
-    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
-    sigaction(SIGSEGV, &sa, NULL);
-    sigaction(SIGBUS, &sa, NULL);
-    sigaction(SIGILL, &sa, NULL);
-    sigaction(SIGFPE, &sa, NULL);
+    /* fault handlers: aw_seh_init() (seh.c) owns SIGSEGV/SIGBUS/SIGILL/SIGFPE */
     signal(SIGPIPE, SIG_IGN);
 
     run_tls_callbacks(1 /* DLL_PROCESS_ATTACH */);

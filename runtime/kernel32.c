@@ -1091,6 +1091,11 @@ API(kernel32, BOOL, IsDBCSLeadByteEx, (UINT cp, BYTE ch))
     return FALSE;
 }
 
+API(kernel32, BOOL, IsDBCSLeadByte, (BYTE ch))
+{
+    return FALSE;
+}
+
 /* MB_ERR_INVALID_CHARS and MB_PRECOMPOSED are accepted and ignored: invalid UTF-8 bytes always
  * decode as Latin-1 (PLAN-CORE §4 rule 5). */
 API(kernel32, INT, MultiByteToWideChar, (UINT cp, DWORD flags, const char *src, INT srclen, WCHAR *dst, INT dstlen))

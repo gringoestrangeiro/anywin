@@ -280,7 +280,7 @@ static void test_sort(void)
     lv->anchor = 6;
     rec.nchanging = rec.nchanged = 0; /* only the sort itself is checked below */
     sp_seen = 0;
-    CHECK(lv_sort_rows(lv, cmp_key, 0x5EED), "sort succeeded");
+    CHECK(lv_sort_rows(lv, cmp_key, 0x5EED, 0), "sort succeeded");
     CHECK(check_sorted_stable(lv, n), "sorted ascending, equal keys keep original order");
     CHECK(sp_seen > 0, "comparator received the sort parameter");
     CHECK(lv->rows[lv->focus]->image == 2, "focus follows its row through the sort");
@@ -396,7 +396,7 @@ static void test_random(unsigned long seed, int rounds)
         (void)before;
         check_invariants(lv, name);
         if (lv->nrows && op == 9) {
-            lv_sort_rows(lv, cmp_key, 0);
+            lv_sort_rows(lv, cmp_key, 0, 0);
             check_invariants(lv, "after sort");
         }
     }

@@ -298,6 +298,13 @@ static HWND create_window(DWORD exstyle, const void *clsp, const void *name, DWO
     pthread_mutex_lock(&aw_wnd_lock);
     c = aw_class_find(cname, catom);
     pthread_mutex_unlock(&aw_wnd_lock);
+    if (aw_debug) {
+        char *cn = cname ? aw_w2u(cname, -1) : NULL;
+        TRACE("CreateWindow cls=%s style=%#lx ex=%#lx xy=%d,%d size=%dx%d parent=%p id=%p%s", cn ? cn : "?",
+              (unsigned long)style, (unsigned long)exstyle, x, y, cx, cy, (void *)parent, (void *)menu,
+              c ? "" : " (UNKNOWN CLASS)");
+        free(cn);
+    }
     if (!c) {
         free(cname);
         aw_set_last_error(ERR_CLASS_DOES_NOT_EXIST);
@@ -689,6 +696,7 @@ API(user32, DWORD, GetWindowThreadProcessId, (HWND h, LPDWORD pid))
 API(user32, BOOL, SetWindowTextA, (HWND h, LPCSTR s))
 {
     if (!aw_hwnd_valid(h)) return FALSE;
+    TRACE("SetWindowTextA hwnd=%p text=\"%s\"", (void *)h, s ? s : "");
     aw_send_msg(h, WM_SETTEXT, 0, (LPARAM)(s ? s : ""), 0);
     return TRUE;
 }

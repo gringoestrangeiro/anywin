@@ -428,27 +428,10 @@ void aw_controls_register(void)
     reg_class("Button", aw_btn_proc, CS_PARENTDC | CS_VREDRAW | CS_HREDRAW, 1);
     reg_class("Static", aw_static_proc, CS_PARENTDC, 1);
     reg_class("Edit", aw_edit_proc, CS_PARENTDC, 1);
-    reg_class("ListBox", aw_listbox_proc, CS_PARENTDC, 1);
     reg_class("ComboBox", aw_combo_proc, CS_PARENTDC, 1);
     reg_class("ComboLBox", aw_combolbox_proc, 0, 1);
-    reg_class("ScrollBar", aw_scrollbar_proc, CS_PARENTDC | CS_VREDRAW | CS_HREDRAW, 1);
+    /* Classes without an implementation (ListBox, ScrollBar, progress, trackbar, ...) are not
+     * registered: CreateWindow then fails with "unknown class", as for any unregistered class. */
     reg_class("SysListView32", aw_listview_proc, 0, 1);
     reg_class("SysHeader32", aw_header_proc, 0, 1);
-    reg_class("msctls_progress32", aw_progress_proc, 0, 0);
-    reg_class("msctls_trackbar32", aw_trackbar_proc, 0, 1);
-    reg_class("msctls_statusbar32", aw_statusbar_proc, 0, 1);
-    reg_class("msctls_updown32", aw_updown_proc, 0, 1);
-    reg_class("SysTabControl32", aw_tab_proc, 0, 1);
-    reg_class("tooltips_class32", aw_tooltip_proc, 0, 0);
-    reg_class("SysTreeView32", aw_treeview_proc, 0, 1);
-    reg_class("ToolbarWindow32", aw_toolbar_proc, 0, 1);
-    reg_class("ReBarWindow32", aw_rebar_proc, 0, 1);
-    reg_class("SysLink", aw_syslink_proc, 0, 1);
-    reg_class("SysDateTimePick32", aw_dtp_proc, 0, 1);
-    reg_class("SysMonthCal32", aw_monthcal_proc, 0, 1);
-    reg_class("RichEdit20A", aw_richedit_proc, 0, 1);
-    reg_class("RichEdit20W", aw_richedit_proc, 0, 1);
-    reg_class("RICHEDIT50W", aw_richedit_proc, 0, 1);
-    reg_class("RichEdit", aw_richedit_proc, 0, 1);
-    reg_class("msctls_hotkey32", aw_hotkey_proc, 0, 1);
 }

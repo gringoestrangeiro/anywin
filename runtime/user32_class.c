@@ -369,8 +369,7 @@ static int class_name_out(const aw_wndclass *c, void *buf, int max, int unicode)
         ((WCHAR *)buf)[n] = 0;
         return n;
     }
-    int n = aw_w2u_buf(c->name, -1, buf, max);
-    return n < 0 ? 0 : n;
+    return aw_w2u_term(c->name, -1, buf, max);
 }
 
 static int get_class_name(HWND h, void *buf, int max, int unicode)

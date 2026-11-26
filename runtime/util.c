@@ -86,7 +86,33 @@ int aw_w2u_buf(const WCHAR *w, int len, char *out, int outlen)
         }
         n += k;
     }
+    /* NUL-terminate whenever the buffer has room past the converted text (callers that
+     * need a C string rely on it; the return value stays the byte count without the NUL) */
+    if (out && n < outlen)
+        out[n] = 0;
     return n;
+}
+
+/* Converts to UTF-8 for an A-API output buffer of outlen bytes: whole characters only, always
+ * NUL-terminated. Returns the number of bytes stored before the NUL (GetWindowTextA semantics). */
+int aw_w2u_term(const WCHAR *w, int len, char *out, int outlen)
+{
+    if (!out || outlen <= 0)
+        return 0;
+    int total = aw_w2u_buf(w, len, NULL, 0);
+    char *cv = malloc((size_t)total + 1);
+    if (!cv) {
+        out[0] = 0;
+        return 0;
+    }
+    aw_w2u_buf(w, len, cv, total);
+    int m = total < outlen - 1 ? total : outlen - 1;
+    while (m > 0 && m < total && ((unsigned char)cv[m] & 0xc0) == 0x80)
+        m--;
+    memcpy(out, cv, (size_t)m);
+    out[m] = 0;
+    free(cv);
+    return m;
 }
 
 char *aw_w2u(const WCHAR *w, int len)

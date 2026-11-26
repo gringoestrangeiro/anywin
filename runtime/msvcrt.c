@@ -638,6 +638,7 @@ API(msvcrt, aw_file *, fopen, (const char *path, const char *mode))
     if (!up)
         return NULL;
     FILE *g = fopen(up, gmode);
+    TRACE("fopen \"%s\" mode=%s -> %s", up, mode, g ? "ok" : strerror(errno));
     free(up);
     if (!g)
         return NULL;

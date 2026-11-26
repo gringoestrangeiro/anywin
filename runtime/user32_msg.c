@@ -143,9 +143,9 @@ LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode)
         WCHAR *tmp = calloc(n + 1, sizeof(WCHAR));
         if (!tmp) return 0;
         LRESULT r = proc(h, msg, (WPARAM)n, (LPARAM)tmp);
-        int out = aw_w2u_buf(tmp, (int)r, (char *)lp, (int)n);
+        int out = aw_w2u_term(tmp, (int)r, (char *)lp, (int)n);
         free(tmp);
-        return out > 0 ? out : 0;
+        return out;
     }
     return proc(h, msg, wp, lp);
 }
@@ -871,8 +871,7 @@ LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode)
             ((WCHAR *)lp)[n > 0 ? n : 0] = 0;
             return n > 0 ? n : 0;
         }
-        int n = aw_w2u_buf(w->text ? w->text : aw_wempty, -1, (char *)lp, (int)wp);
-        return n > 0 ? n - 1 : 0;
+        return aw_w2u_term(w->text ? w->text : aw_wempty, -1, (char *)lp, (int)wp);
     }
     case WM_GETTEXTLENGTH: {
         if (w->unicode) return w->text_len;

@@ -117,6 +117,7 @@ char *aw_w2u(const WCHAR *w, int len);       /* malloc'd utf-8, len -1 = nul ter
 WCHAR *aw_u2w(const char *s, int len);       /* malloc'd utf-16 */
 int aw_u2w_buf(const char *s, int len, WCHAR *out, int outlen); /* returns chars written (no nul) */
 int aw_w2u_buf(const WCHAR *w, int len, char *out, int outlen);
+int aw_w2u_term(const WCHAR *w, int len, char *out, int outlen);
 #define IS_INTRESOURCE(p) (((uintptr_t)(p) >> 16) == 0)
 
 /* paths */

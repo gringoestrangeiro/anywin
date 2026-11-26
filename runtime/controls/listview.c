@@ -358,39 +358,55 @@ static int lv_sorted_pos(const struct lv *lv, const WCHAR *text)
     return i;
 }
 
-/* stable bottom-up merge sort of the row pointers; the comparator is the program's (ms_abi) */
-static int lv_sort_rows(struct lv *lv, lv_cmp_fn cmp, LPARAM sp)
+/* stable bottom-up merge sort of the row pointers; the comparator is the program's (ms_abi).
+ * lv->rows stays untouched until the end so the comparator can query items by index
+ * (LVM_SORTITEMSEX passes item indices, LVM_SORTITEMS passes item lParams).
+ * The left item moves after the right one only when cmp(left, right) > 0, so boolean-style
+ * comparators work as they do on Windows. */
+static int lv_sort_rows(struct lv *lv, lv_cmp_fn cmp, LPARAM sp, int by_index)
 {
     int n = lv->nrows;
-    lv_row **a = lv->rows, **tmp;
+    lv_row **a = lv->rows;
     lv_row *fr = (lv->focus >= 0 && lv->focus < n) ? a[lv->focus] : NULL;
     lv_row *ar = (lv->anchor >= 0 && lv->anchor < n) ? a[lv->anchor] : NULL;
+    lv_row **cur, **tmp;
+    int *ix, *tix;
 
     if (n < 2)
         return 1;
+    cur = malloc((size_t)n * sizeof *cur);
     tmp = malloc((size_t)n * sizeof *tmp);
-    if (!tmp)
+    ix = malloc((size_t)n * sizeof *ix);
+    tix = malloc((size_t)n * sizeof *tix);
+    if (!cur || !tmp || !ix || !tix) {
+        free(cur); free(tmp); free(ix); free(tix);
         return 0;
+    }
+    memcpy(cur, a, (size_t)n * sizeof *cur);
+    for (int i = 0; i < n; i++)
+        ix[i] = i;
     for (int w = 1; w < n; w *= 2) {
         for (int lo = 0; lo < n; lo += 2 * w) {
             int mid = lo + w < n ? lo + w : n;
             int hi = lo + 2 * w < n ? lo + 2 * w : n;
             int i = lo, j = mid, k = lo;
             while (i < mid && j < hi) {
-                /* the right run goes first only when strictly smaller: equal items keep their order */
-                if (cmp(a[j]->lparam, a[i]->lparam, sp) < 0)
-                    tmp[k++] = a[j++];
-                else
-                    tmp[k++] = a[i++];
+                LPARAM l = by_index ? (LPARAM)ix[i] : cur[i]->lparam;
+                LPARAM r = by_index ? (LPARAM)ix[j] : cur[j]->lparam;
+                if (cmp(l, r, sp) > 0) {
+                    tix[k] = ix[j]; tmp[k++] = cur[j++];
+                } else {
+                    tix[k] = ix[i]; tmp[k++] = cur[i++];
+                }
             }
-            while (i < mid)
-                tmp[k++] = a[i++];
-            while (j < hi)
-                tmp[k++] = a[j++];
-            memcpy(&a[lo], &tmp[lo], (size_t)(hi - lo) * sizeof *a);
+            while (i < mid) { tix[k] = ix[i]; tmp[k++] = cur[i++]; }
+            while (j < hi) { tix[k] = ix[j]; tmp[k++] = cur[j++]; }
+            memcpy(&cur[lo], &tmp[lo], (size_t)(hi - lo) * sizeof *cur);
+            memcpy(&ix[lo], &tix[lo], (size_t)(hi - lo) * sizeof *ix);
         }
     }
-    free(tmp);
+    memcpy(a, cur, (size_t)n * sizeof *a);
+    free(cur); free(tmp); free(ix); free(tix);
     lv->focus = lv_index_of_row(lv, fr);
     lv->anchor = lv_index_of_row(lv, ar);
     return 1;
@@ -2134,8 +2150,16 @@ static LRESULT lv_lvm(struct lv *lv, UINT msg, WPARAM wp, LPARAM lp, int *handle
         lv_cmp_fn cmp = (lv_cmp_fn)(intptr_t)lp;
         if (!cmp)
             return 0;
-        if (!lv_sort_rows(lv, cmp, (LPARAM)wp))
+        if (!lv_sort_rows(lv, cmp, (LPARAM)wp, msg == LVM_SORTITEMSEX))
             return 0;
+        if (aw_debug)
+            for (int i = 0; i < lv->nrows; i++) {
+                const WCHAR *rt = lv_row_text(lv->rows[i], 1);
+                static const WCHAR none[1] = {0};
+                char *t = aw_w2u(rt ? rt : none, -1);
+                TRACE("listview sorted row %d title=\"%s\"", i, t ? t : "");
+                free(t);
+            }
         lv_layout_changed(lv);
         return 1;
     }
@@ -2508,6 +2532,10 @@ LRESULT WINAPI aw_listview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct lv *lv = ctl_get(hwnd);
     LRESULT res;
+
+    if (aw_debug && msg == LVM_SETITEMTEXTA && lp && ((const LVITEMA *)lp)->iSubItem == 1)
+        TRACE("listview row %d title=\"%s\"", (int)wp,
+              ((const LVITEMA *)lp)->pszText ? ((const LVITEMA *)lp)->pszText : "");
 
     if (msg == WM_CREATE) {
         lv = ctl_alloc(hwnd, sizeof(struct lv));
