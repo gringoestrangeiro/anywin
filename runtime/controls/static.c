@@ -60,8 +60,13 @@ static void st_draw_text(HWND hwnd, HDC hdc, const RECT *rc, UINT style)
     else if (type == SS_RIGHT)
         fmt = DT_RIGHT;
 
-    single = (type == SS_SIMPLE || type == SS_LEFTNOWORDWRAP || (ell && ell != SS_WORDELLIPSIS));
-    fmt |= single ? DT_SINGLELINE : DT_WORDBREAK;
+    /* SS_LEFTNOWORDWRAP keeps the line breaks of the text but never wraps a line; SS_SIMPLE and the
+     * ellipsis styles are a single line; the other text styles word-wrap */
+    single = (type == SS_SIMPLE || (ell && ell != SS_WORDELLIPSIS));
+    if (single)
+        fmt |= DT_SINGLELINE;
+    else if (type != SS_LEFTNOWORDWRAP)
+        fmt |= DT_WORDBREAK;
     if (style & SS_CENTERIMAGE)
         fmt |= DT_SINGLELINE | DT_VCENTER;
     if (style & SS_NOPREFIX)

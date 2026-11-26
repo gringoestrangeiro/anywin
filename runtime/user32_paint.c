@@ -117,6 +117,36 @@ void aw_paint_now(aw_win *w)
     }
 }
 
+/* A parent painted over `area` (its client coords) without WS_CLIPCHILDREN has overwritten the
+ * children there: they repaint as well (their own update regions), as on Windows. */
+void aw_invalidate_children_in(aw_win *w, const aw_region *area)
+{
+    if (!w || !area || (w->style & WS_CLIPCHILDREN))
+        return;
+    for (HWND c = w->first_child; c;) {
+        aw_win *cw = from(c);
+        if (!cw)
+            break;
+        if (cw->visible) {
+            for (int i = 0; i < area->n; i++) {
+                RECT r = area->r[i], cr = cw->rect, local;
+                if (r.left < cr.left) r.left = cr.left;
+                if (r.top < cr.top) r.top = cr.top;
+                if (r.right > cr.right) r.right = cr.right;
+                if (r.bottom > cr.bottom) r.bottom = cr.bottom;
+                if (r.left >= r.right || r.top >= r.bottom)
+                    continue;
+                local.left = r.left - cr.left;
+                local.top = r.top - cr.top;
+                local.right = r.right - cr.left;
+                local.bottom = r.bottom - cr.top;
+                aw_invalidate(cw, &local, 0);
+            }
+        }
+        c = cw->next_sib;
+    }
+}
+
 /* ------------------------------------------------------------------ DCs */
 /* A GDI DC on the window's back buffer, clipped to vis (surface coords). */
 HDC aw_dc_for(aw_win *w, const aw_region *vis, int window_dc)

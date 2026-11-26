@@ -302,6 +302,12 @@ HANDLE aw_std_handle(int which)
     return which >= 0 && which < 3 ? std_handles[which] : NULL;
 }
 
+void aw_set_std_handle(int which, HANDLE h)
+{
+    if (which >= 0 && which < 3)
+        std_handles[which] = h;
+}
+
 void *aw_process_heap(void) { return process_heap_marker; }
 void *aw_unhandled_filter(void) { return unhandled_filter; }
 
@@ -983,7 +989,7 @@ API(kernel32, HANDLE, GetStdHandle, (DWORD which))
 
 API(kernel32, BOOL, WriteFile, (HANDLE h, const void *buf, DWORD n, DWORD *written, void *ov))
 {
-    (void)ov; /* no overlapped I/O: writes complete before returning */
+    /* no overlapped I/O: writes complete before returning, so ov only receives the final result */
     if (written)
         *written = 0;
     int fd = aw_handle_fd(h);
@@ -1005,6 +1011,10 @@ API(kernel32, BOOL, WriteFile, (HANDLE h, const void *buf, DWORD n, DWORD *writt
     }
     if (written)
         *written = done;
+    if (ov) {
+        *(uint64_t *)((char *)ov + 0) = done == n ? 0 : 5; /* STATUS_ACCESS_DENIED for a short write */
+        *(uint64_t *)((char *)ov + 8) = done;
+    }
     return done == n;
 }
 
@@ -1027,15 +1037,7 @@ void aw_file_close(aw_object *o)
     *path = NULL;
 }
 
-void aw_process_close(aw_object *o)
-{
-    void **ext = aw_obj_ext(o);
-    free(*ext);
-    *ext = NULL;
-}
-
-/* no child processes exist in Stage 1: a process object is signaled only when set */
-int aw_process_poll(aw_object *o) { return aw_obj_is_signaled(o); }
+/* process objects (k32_proc.c): CloseHandle and child reaping */
 
 /* QueueUserAPC is not in Stage 1, so no APC can ever be pending */
 int aw_apc_run(DWORD tid)

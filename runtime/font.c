@@ -246,10 +246,13 @@ static const char *const sans_chain[] = {"notosans", "dejavusans", "liberationsa
 static const char *const arial_chain[] = {"liberationsans", "notosans", "dejavusans", NULL};
 static const char *const mono_chain[] = {"dejavusansmono", "liberationmono", "notosansmono", NULL};
 static const char *const serif_chain[] = {"liberationserif", "dejavuserif", "notoserif", NULL};
-static const char *const sans_names[] = {"segoeui", "tahoma", "msshelldlg", "msshelldlg2",
-                                         "microsoftsansserif", "verdana", "calibri", "system",
+/* MS Shell Dlg / Tahoma (the dialog font) and Microsoft Sans Serif are metrically closest to Arial
+ * (Liberation Sans): at 11 ppem its 52-letter average and 13 px cell give the 6x13 dialog base units
+ * of Tahoma 8pt, where Noto Sans would give 6x18 and clip the dialog labels. */
+static const char *const sans_names[] = {"segoeui", "verdana", "calibri", "system",
                                          "sans", "sansserif", "", NULL};
-static const char *const arial_names[] = {"arial", "helvetica", NULL};
+static const char *const arial_names[] = {"arial", "helvetica", "tahoma", "msshelldlg", "msshelldlg2",
+                                          "microsoftsansserif", NULL};
 static const char *const mono_names[] = {"couriernew", "consolas", "lucidaconsole", "terminal",
                                          "fixedsys", "monospace", "courier", NULL};
 static const char *const serif_names[] = {"timesnewroman", "georgia", "cambria", "times", "serif", NULL};
@@ -768,6 +771,7 @@ struct aw_font {
     face *fb[MAX_FALLBACK];  /* faces tried for codepoints missing from f */
     int nfb;
     double ppem;
+    double hscale;           /* horizontal scale of outlines and advances (1.0 = as designed) */
     int synth_bold, synth_italic;
     int bi_k;
     struct gent *bucket[GLYPH_BUCKETS];
@@ -826,6 +830,11 @@ static void builtin_glyph(aw_font *f, uint32_t cp, aw_glyph *g) {
     g->alpha = a;
 }
 
+/* Tahoma (the MS Shell Dlg dialog face) is set about 5% narrower than Arial at 8pt: the stand-in
+ * Liberation Sans is scaled to that width so the dialog labels fit the control rectangles of the
+ * dialog layouts (which are sized for Tahoma). */
+#define TAHOMA_STANDIN_HSCALE 0.95
+
 static void glyph_make(aw_font *f, uint32_t cp, aw_glyph *g) {
     if (!f->f) {
         builtin_glyph(f, cp, g);
@@ -850,10 +859,10 @@ static void glyph_make(aw_font *f, uint32_t cp, aw_glyph *g) {
     double ident[6] = {1, 0, 0, 1, 0, 0};
     load_glyph_units(use, gid, ident, &o, 0);
     /* synthetic italic: about 11 degrees (x += 0.2 * y); only for the primary face */
-    render_outline(&o, scale, scale, primary && f->synth_italic ? 0.2 : 0.0, primary && f->synth_bold, g);
+    render_outline(&o, scale * f->hscale, scale, primary && f->synth_italic ? 0.2 : 0.0, primary && f->synth_bold, g);
     free(o.p);
     free(o.ends);
-    g->advance = iround(hmtx_advance(use, gid) * scale);
+    g->advance = iround(hmtx_advance(use, gid) * scale * f->hscale);
 }
 
 const aw_font_metrics *font_metrics(aw_font *f) { return &f->m; }
@@ -899,6 +908,9 @@ aw_font *font_open(const char *facename, int lfheight, int width, int weight, in
 
     aw_font *f = calloc(1, sizeof *f);
     if (!f) return fonts[0] ? fonts[0] : NULL;
+    f->hscale = 1.0;
+    if (!strcmp(norm, "tahoma") || !strcmp(norm, "msshelldlg") || !strcmp(norm, "msshelldlg2"))
+        f->hscale = TAHOMA_STANDIN_HSCALE;
     for (int i = 0; i < nch && !f->f; i++) {
         const char *p = find_file(ch[i], style);
         if (p) f->f = face_load(p);

@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-26T13:03:51Z",
+ "generated": "2026-11-26T17:17:25Z",
  "inventory": {
   "source": "Microsoft.Windows.SDK.Win32Metadata",
   "version": "71.0.45-preview",
@@ -10,61 +10,82 @@
   "functions": 18319
  },
  "win32_coverage": {
-  "implemented": 545,
+  "implemented": 789,
   "total": 18319,
-  "pct": 2.98
+  "pct": 4.31
  },
  "started_modules": {
-  "implemented": 545,
-  "total": 4824,
-  "pct": 11.3
+  "implemented": 789,
+  "total": 5099,
+  "pct": 15.47
  },
  "runtime": {
-  "exports": 649,
-  "modules": 14,
-  "matched": 545,
-  "outside_inventory": 104
+  "exports": 894,
+  "modules": 17,
+  "matched": 789,
+  "outside_inventory": 105
  },
  "sample_imports": {
-  "covered": 315,
-  "total": 315,
-  "pct": 100.0
+  "covered": 572,
+  "total": 581,
+  "pct": 98.45
  },
- "sample_programs": 17,
+ "sample_programs": 29,
  "module_rows": [
   {
    "module": "user32",
    "apis": 780,
-   "implemented": 228,
-   "pct": 29.23,
+   "implemented": 306,
+   "pct": 39.23,
    "started": true
   },
   {
    "module": "kernel32",
    "apis": 1585,
-   "implemented": 172,
-   "pct": 10.85,
+   "implemented": 253,
+   "pct": 15.96,
    "started": true
   },
   {
    "module": "gdi32",
    "apis": 431,
-   "implemented": 51,
-   "pct": 11.83,
+   "implemented": 81,
+   "pct": 18.79,
    "started": true
   },
   {
    "module": "ws2_32",
    "apis": 160,
-   "implemented": 45,
-   "pct": 28.12,
+   "implemented": 60,
+   "pct": 37.5,
    "started": true
   },
   {
    "module": "advapi32",
    "apis": 624,
-   "implemented": 26,
-   "pct": 4.17,
+   "implemented": 36,
+   "pct": 5.77,
+   "started": true
+  },
+  {
+   "module": "winspool",
+   "apis": 172,
+   "implemented": 13,
+   "pct": 7.56,
+   "started": true
+  },
+  {
+   "module": "shell32",
+   "apis": 257,
+   "implemented": 7,
+   "pct": 2.72,
+   "started": true
+  },
+  {
+   "module": "comdlg32",
+   "apis": 21,
+   "implemented": 7,
+   "pct": 33.33,
    "started": true
   },
   {
@@ -75,13 +96,6 @@
    "started": true
   },
   {
-   "module": "shell32",
-   "apis": 257,
-   "implemented": 6,
-   "pct": 2.33,
-   "started": true
-  },
-  {
    "module": "oleaut32",
    "apis": 405,
    "implemented": 5,
@@ -89,17 +103,24 @@
    "started": true
   },
   {
+   "module": "comctl32",
+   "apis": 115,
+   "implemented": 5,
+   "pct": 4.35,
+   "started": true
+  },
+  {
+   "module": "imm32",
+   "apis": 82,
+   "implemented": 5,
+   "pct": 6.1,
+   "started": true
+  },
+  {
    "module": "version",
    "apis": 14,
    "implemented": 3,
    "pct": 21.43,
-   "started": true
-  },
-  {
-   "module": "comctl32",
-   "apis": 115,
-   "implemented": 1,
-   "pct": 0.87,
    "started": true
   },
   {
@@ -285,13 +306,6 @@
    "started": false
   },
   {
-   "module": "winspool",
-   "apis": 172,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
    "module": "odbc32",
    "apis": 154,
    "implemented": 0,
@@ -385,13 +399,6 @@
   {
    "module": "rasapi32",
    "apis": 84,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
-   "module": "imm32",
-   "apis": 82,
    "implemented": 0,
    "pct": 0.0,
    "started": false
@@ -910,13 +917,6 @@
   {
    "module": "cabinet",
    "apis": 22,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
-   "module": "comdlg32",
-   "apis": 21,
    "implemented": 0,
    "pct": 0.0,
    "started": false
@@ -2247,6 +2247,12 @@
  ],
  "program_rows": [
   {
+   "program": "build/Calculator.exe",
+   "imports": 59,
+   "covered": 50,
+   "pct": 84.75
+  },
+  {
    "program": "build/StartupSentinel.exe",
    "imports": 190,
    "covered": 190,
@@ -2256,6 +2262,18 @@
    "program": "build/bench_cpu.exe",
    "imports": 48,
    "covered": 48,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_clip_probe.exe",
+   "imports": 78,
+   "covered": 78,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_dialog.exe",
+   "imports": 67,
+   "covered": 67,
    "pct": 100.0
   },
   {
@@ -2277,9 +2295,33 @@
    "pct": 100.0
   },
   {
+   "program": "build/core_keys_probe.exe",
+   "imports": 57,
+   "covered": 57,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_listbox.exe",
+   "imports": 57,
+   "covered": 57,
+   "pct": 100.0
+  },
+  {
    "program": "build/core_menu_probe.exe",
    "imports": 69,
    "covered": 69,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_postq_probe.exe",
+   "imports": 74,
+   "covered": 74,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_radio.exe",
+   "imports": 62,
+   "covered": 62,
    "pct": 100.0
   },
   {
@@ -2307,9 +2349,33 @@
    "pct": 100.0
   },
   {
+   "program": "build/core_treeview.exe",
+   "imports": 55,
+   "covered": 55,
+   "pct": 100.0
+  },
+  {
    "program": "build/core_winapi_probe.exe",
    "imports": 92,
    "covered": 92,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_wsa_async_probe.exe",
+   "imports": 66,
+   "covered": 66,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_wsize.exe",
+   "imports": 59,
+   "covered": 59,
+   "pct": 100.0
+  },
+  {
+   "program": "build/core_zorder.exe",
+   "imports": 58,
+   "covered": 58,
    "pct": 100.0
   },
   {
@@ -2328,6 +2394,12 @@
    "program": "build/nethello.exe",
    "imports": 48,
    "covered": 48,
+   "pct": 100.0
+  },
+  {
+   "program": "build/putty.exe",
+   "imports": 348,
+   "covered": 348,
    "pct": 100.0
   },
   {
@@ -2451,6 +2523,7 @@
    "vprintf",
    "vsnprintf",
    "vsprintf",
+   "wcscmp",
    "wcslen"
   ],
   "ntdll": [
@@ -2465,5 +2538,42 @@
    "ntohll"
   ]
  },
- "missing_imports": []
+ "missing_imports": [
+  {
+   "module": "kernel32",
+   "function": "RtlAddFunctionTable"
+  },
+  {
+   "module": "msvcrt",
+   "function": "__dllonexit"
+  },
+  {
+   "module": "msvcrt",
+   "function": "__lconv_init"
+  },
+  {
+   "module": "msvcrt",
+   "function": "_getch"
+  },
+  {
+   "module": "msvcrt",
+   "function": "_lock"
+  },
+  {
+   "module": "msvcrt",
+   "function": "_onexit"
+  },
+  {
+   "module": "msvcrt",
+   "function": "_unlock"
+  },
+  {
+   "module": "msvcrt",
+   "function": "scanf"
+  },
+  {
+   "module": "msvcrt",
+   "function": "tan"
+  }
+ ]
 }

@@ -235,6 +235,11 @@ API(kernel32, HANDLE, CreateFileW, (const WCHAR *name, DWORD access, DWORD share
         aw_set_last_error(ERR_INVALID_PARAMETER);
         return INVALID_HANDLE_VALUE;
     }
+    if (aw_pipe_name(w)) { /* \\.\pipe\NAME connects to a named pipe (k32_pipe.c) */
+        HANDLE ph = aw_pipe_open(w, access, disp);
+        free(w);
+        return ph;
+    }
     HANDLE h = open_file(w, access, disp, flags);
     free(w);
     return h;
@@ -250,6 +255,8 @@ API(kernel32, HANDLE, CreateFileA, (const char *name, DWORD access, DWORD share,
         aw_set_last_error(ERR_INVALID_PARAMETER);
         return INVALID_HANDLE_VALUE;
     }
+    if (aw_pipe_name(name))
+        return aw_pipe_open(name, access, disp);
     return open_file(name, access, disp, flags);
 }
 
@@ -275,6 +282,10 @@ API(kernel32, BOOL, ReadFile, (HANDLE h, void *buf, DWORD n, DWORD *nread, void 
     if (r < 0) {
         fail_errno();
         return FALSE;
+    }
+    if (ov) { /* OVERLAPPED result: Internal = status 0, InternalHigh = bytes transferred */
+        *(uint64_t *)((char *)ov + 0) = 0;
+        *(uint64_t *)((char *)ov + 8) = (uint64_t)r;
     }
     if (nread)
         *nread = (DWORD)r;

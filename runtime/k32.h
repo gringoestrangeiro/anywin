@@ -36,6 +36,17 @@ extern char aw_curdir_win[4096];          /* current directory as a Windows path
 void aw_init_environment(void);
 HANDLE aw_std_handle(int which);          /* 0 in, 1 out, 2 err */
 void *aw_process_heap(void);              /* identity of the process heap (PEB.ProcessHeap) */
-void *aw_unhandled_filter(void);          /* last SetUnhandledExceptionFilter value (package C reads it) */
+void *aw_unhandled_filter(void);             /* last SetUnhandledExceptionFilter value (package C reads it) */
+
+/* ---- sync.c accessors for process and thread objects (k32_proc.c) ---- */
+void aw_obj_set_finished(aw_object *o, DWORD code);
+DWORD aw_obj_exit_code(aw_object *o);
+int aw_obj_finished(aw_object *o);
+HANDLE aw_current_thread_handle(void);
+/* ---- kernel32.c: replaces the std handle (SetStdHandle) ---- */
+void aw_set_std_handle(int which, HANDLE h);
+/* ---- k32_pipe.c: named pipes (\\.\pipe\name) ---- */
+int aw_pipe_name(const char *win);
+HANDLE aw_pipe_open(const char *win, DWORD access, DWORD disp);
 
 #endif

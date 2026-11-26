@@ -46,7 +46,17 @@ run hello_console    --tool x86_64-w64-mingw32-gcc -- "$root/tests/hello_console
 run hello_gui        --tool Xvfb -- "$root/tests/hello_gui.sh" "$build"
 run todo_smoke       --tool Xvfb -- "$root/tests/todo_smoke.sh" "$build"
 run todo_p0          --tool Xvfb -- "$root/tests/todo_p0.sh" "$build"
+run core_clip        --tool Xvfb -- "$root/tests/core_clip.sh" "$build"
 run winsock          --tool x86_64-w64-mingw32-gcc -- "$root/tests/winsock.sh" "$build"
+run core_dialog      --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_dialog.sh" "$build"
+run core_listbox     --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_listbox.sh" "$build"
+run core_treeview    --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_treeview.sh" "$build"
+run core_wsa_async --tool Xvfb -- "$root/tests/core_wsa_async.sh" "$build"
+run core_keys      --tool Xvfb -- "$root/tests/core_keys.sh" "$build"
+run core_postq     --tool Xvfb -- "$root/tests/core_postq.sh" "$build"
+run core_wsize     --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_wsize.sh" "$build"
+run core_radio    --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_radio.sh" "$build"
+run core_zorder   --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_zorder.sh" "$build"
 
 echo "---- pass=$pass fail=$fail skip=$skip"
 [ $fail -eq 0 ]

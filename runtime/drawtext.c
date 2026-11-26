@@ -333,7 +333,7 @@ static void fill_tm_common(const aw_font_metrics *m, LONG *h, LONG *asc, LONG *d
     *strike = (BYTE)(m->strikeout != 0);
     /* TMPF_FIXED_PITCH is set for variable pitch; TMPF_TRUETYPE 0x04; family FF_MODERN / FF_SWISS */
     *pitch = (BYTE)(m->fixed_pitch ? (0x30 | 0x04) : (0x20 | 0x01 | 0x04));
-    *charset = 1; /* DEFAULT_CHARSET */
+    *charset = 0; /* ANSI_CHARSET: what Windows reports for a Latin face asked for DEFAULT_CHARSET */
 }
 
 API(gdi32, BOOL, GetTextMetricsA, (HDC hdc, aw_textmetricA *tm))

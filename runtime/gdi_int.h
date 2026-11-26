@@ -120,6 +120,11 @@ typedef struct aw_textmetricW {
 typedef struct gdi_dc gdi_dc;
 typedef struct gdi_obj gdi_obj;
 
+/* PALETTEENTRY layout (Win32 ABI) */
+typedef struct aw_palentry {
+    BYTE peRed, peGreen, peBlue, peFlags;
+} aw_palentry;
+
 struct gdi_obj {
     int type;     /* GDI_OBJ_* */
     int slot;     /* index in the handle table */
@@ -139,6 +144,10 @@ struct gdi_obj {
         aw_surface *bmp;
         aw_region rgn;
         gdi_dc *dc;
+        struct {
+            int n;
+            aw_palentry *e;
+        } pal;
     } u;
 };
 
@@ -153,7 +162,7 @@ struct gdi_dc {
     RECT cb;                 /* bounding box of clip (fast reject while drawing) */
     int vx, vy, wx, wy;      /* device = logical - window origin + viewport origin (MM_TEXT) */
     int map_mode;
-    HGDIOBJ pen, brush, font, bmp;
+    HGDIOBJ pen, brush, font, bmp, pal;   /* pal: NULL = default palette */
     COLORREF text_color, bk_color, dc_brush, dc_pen;
     int bk_mode, rop2, text_align, poly_fill;
     int cur_x, cur_y;        /* current position, logical (MoveToEx, LineTo, TA_UPDATECP) */
@@ -171,6 +180,12 @@ int gdi_rgn_equal(const aw_region *a, const aw_region *b);   /* region.c */
 COLORREF gdi_pen_color(const gdi_dc *d, const gdi_obj *pen); /* stock DC_PEN resolved from the DC */
 int gdi_brush_color(const gdi_dc *d, HGDIOBJ h, COLORREF *out); /* 1 solid, 0 null, -1 invalid */
 aw_font *gdi_default_font(void);          /* DEFAULT_GUI_FONT, used when a DC has none */
+
+/* ---- gdi.c: object allocation shared with gdi_misc.c ----------------------- */
+gdi_obj *gdi_alloc_obj(int type);          /* new table entry of that type, payload zeroed */
+HGDIOBJ gdi_obj_handle(const gdi_obj *o);
+void gdi_ref_select(HGDIOBJ h);            /* a DC selected h (selection count) */
+void gdi_ref_deselect(HGDIOBJ h);          /* a DC dropped h; frees it if doomed */
 
 /* ---- colours ------------------------------------------------------------------ */
 /* COLORREF 0x00BBGGRR -> surface pixel 0x00RRGGBB */

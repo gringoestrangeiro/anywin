@@ -6,10 +6,10 @@ Inventory: **Microsoft.Windows.SDK.Win32Metadata 71.0.45-preview** ([release](ht
 
 | Metric | Implemented | Total | Coverage |
 |---|---:|---:|---:|
-| Windows APIs | 545 | 18,319 | 2.98% |
-| Windows APIs in started modules | 545 | 4,824 | 11.30% |
-| Sample-program imports | 315 | 315 | 100.00% |
-| Runtime exports (including C runtime) | 649 | 649 | 100.00% |
+| Windows APIs | 789 | 18,319 | 4.31% |
+| Windows APIs in started modules | 789 | 5,099 | 15.47% |
+| Sample-program imports | 572 | 581 | 98.45% |
+| Runtime exports (including C runtime) | 894 | 894 | 100.00% |
 
 The first map section is the full Win32 inventory. The second zooms in on the modules where anywin has started. Green means an implementation exists in the runtime; grey means the function is known but not implemented. The third section is the union of imports across the sample programs, so it answers a different question: whether those particular programs can resolve everything they import.
 
@@ -17,16 +17,19 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 
 | Module | Windows APIs | Implemented | Coverage |
 |---|---:|---:|---:|
-| `user32` | 780 | 228 | 29.2% |
-| `kernel32` | 1585 | 172 | 10.8% |
-| `gdi32` | 431 | 51 | 11.8% |
-| `ws2_32` | 160 | 45 | 28.1% |
-| `advapi32` | 624 | 26 | 4.2% |
+| `user32` | 780 | 306 | 39.2% |
+| `kernel32` | 1585 | 253 | 16.0% |
+| `gdi32` | 431 | 81 | 18.8% |
+| `ws2_32` | 160 | 60 | 37.5% |
+| `advapi32` | 624 | 36 | 5.8% |
+| `winspool` | 172 | 13 | 7.6% |
+| `shell32` | 257 | 7 | 2.7% |
+| `comdlg32` | 21 | 7 | 33.3% |
 | `ole32` | 319 | 6 | 1.9% |
-| `shell32` | 257 | 6 | 2.3% |
 | `oleaut32` | 405 | 5 | 1.2% |
+| `comctl32` | 115 | 5 | 4.3% |
+| `imm32` | 82 | 5 | 6.1% |
 | `version` | 14 | 3 | 21.4% |
-| `comctl32` | 115 | 1 | 0.9% |
 | `ntdll` | 72 | 1 | 1.4% |
 | `wintrust` | 62 | 1 | 1.6% |
 | `gdiplus` | 629 | 0 | 0.0% |
@@ -53,7 +56,6 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `fwpuclnt` | 194 | 0 | 0.0% |
 | `webservices` | 193 | 0 | 0.0% |
 | `winmm` | 176 | 0 | 0.0% |
-| `winspool` | 172 | 0 | 0.0% |
 | `odbc32` | 154 | 0 | 0.0% |
 | `mfplat` | 147 | 0 | 0.0% |
 | `resutils` | 120 | 0 | 0.0% |
@@ -68,7 +70,6 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `chakra` | 85 | 0 | 0.0% |
 | `msdrm` | 84 | 0 | 0.0% |
 | `rasapi32` | 84 | 0 | 0.0% |
-| `imm32` | 82 | 0 | 0.0% |
 | `ntdsapi` | 81 | 0 | 0.0% |
 | `mscms` | 80 | 0 | 0.0% |
 | `iscsidsc` | 79 | 0 | 0.0% |
@@ -143,7 +144,6 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `oledlg` | 23 | 0 | 0.0% |
 | `activeds` | 22 | 0 | 0.0% |
 | `cabinet` | 22 | 0 | 0.0% |
-| `comdlg32` | 21 | 0 | 0.0% |
 | `icm32` | 21 | 0 | 0.0% |
 | `wer` | 21 | 0 | 0.0% |
 | `dciman32` | 20 | 0 | 0.0% |
@@ -342,7 +342,7 @@ These runtime exports are either C runtime names or functions that Microsoft's m
 |---|---:|---|
 | `combase` | 1 | `CoTaskMemFree` |
 | `kernel32` | 3 | `FreeEnvironmentStrings`, `GetEnvironmentStringsA`, `__C_specific_handler` |
-| `msvcrt` | 93 | `_Exit`, `__C_specific_handler`, `___lc_codepage_func`, `___mb_cur_max_func`, `__acrt_iob_func`, `__getmainargs`, `__initenv`, `__iob_func` … (+85) |
+| `msvcrt` | 94 | `_Exit`, `__C_specific_handler`, `___lc_codepage_func`, `___mb_cur_max_func`, `__acrt_iob_func`, `__getmainargs`, `__initenv`, `__iob_func` … (+86) |
 | `ntdll` | 3 | `NtWriteFile`, `RtlLookupFunctionEntry`, `RtlVirtualUnwind` |
 | `ws2_32` | 4 | `InetNtopA`, `InetPtonA`, `htonll`, `ntohll` |
 
@@ -350,24 +350,48 @@ These runtime exports are either C runtime names or functions that Microsoft's m
 
 | Program | Imports | Implemented | Coverage |
 |---|---:|---:|---:|
+| `build/Calculator.exe` | 59 | 50 | 84.8% |
 | `build/StartupSentinel.exe` | 190 | 190 | 100.0% |
 | `build/bench_cpu.exe` | 48 | 48 | 100.0% |
+| `build/core_clip_probe.exe` | 78 | 78 | 100.0% |
+| `build/core_dialog.exe` | 67 | 67 | 100.0% |
 | `build/core_env.exe` | 20 | 20 | 100.0% |
 | `build/core_gui_controls.exe` | 65 | 65 | 100.0% |
 | `build/core_gui_probe.exe` | 68 | 68 | 100.0% |
+| `build/core_keys_probe.exe` | 57 | 57 | 100.0% |
+| `build/core_listbox.exe` | 57 | 57 | 100.0% |
 | `build/core_menu_probe.exe` | 69 | 69 | 100.0% |
+| `build/core_postq_probe.exe` | 74 | 74 | 100.0% |
+| `build/core_radio.exe` | 62 | 62 | 100.0% |
 | `build/core_registry_probe.exe` | 58 | 58 | 100.0% |
 | `build/core_scroll_probe.exe` | 64 | 64 | 100.0% |
 | `build/core_stdio_probe.exe` | 61 | 61 | 100.0% |
 | `build/core_tray_probe.exe` | 48 | 48 | 100.0% |
+| `build/core_treeview.exe` | 55 | 55 | 100.0% |
 | `build/core_winapi_probe.exe` | 92 | 92 | 100.0% |
+| `build/core_wsa_async_probe.exe` | 66 | 66 | 100.0% |
+| `build/core_wsize.exe` | 59 | 59 | 100.0% |
+| `build/core_zorder.exe` | 58 | 58 | 100.0% |
 | `build/hello_console.exe` | 46 | 46 | 100.0% |
 | `build/hello_gui.exe` | 68 | 68 | 100.0% |
 | `build/nethello.exe` | 48 | 48 | 100.0% |
+| `build/putty.exe` | 348 | 348 | 100.0% |
 | `build/winsock_probe.exe` | 72 | 72 | 100.0% |
 | `build/winsocktest.exe` | 56 | 56 | 100.0% |
 | `todo.exe` | 108 | 108 | 100.0% |
 
-No sample-program import is missing from the runtime.
+## Missing sample imports
+
+| Module | Function |
+|---|---|
+| `kernel32` | `RtlAddFunctionTable` |
+| `msvcrt` | `__dllonexit` |
+| `msvcrt` | `__lconv_init` |
+| `msvcrt` | `_getch` |
+| `msvcrt` | `_lock` |
+| `msvcrt` | `_onexit` |
+| `msvcrt` | `_unlock` |
+| `msvcrt` | `scanf` |
+| `msvcrt` | `tan` |
 
 Regenerate with `make coverage` (after `make` and, for the full sample set, `make test`). The inventory snapshot is [`tools/coverage/data/win32api.json`](../tools/coverage/data/win32api.json); the sample-program import snapshot is [`tools/coverage/data/corpus.json`](../tools/coverage/data/corpus.json).

@@ -75,7 +75,11 @@ static sb_bar *sb_for_write(aw_win *w, int b)
 
 static int bar_visible(const aw_win *w, int b)
 {
-    const sb_state *s = sb_state_of(w);
+    const sb_state *s;
+    /* a combo box's own window has no scroll bars: WS_VSCROLL / WS_HSCROLL style its drop-down list */
+    if (w->cls && aw_wcmp_ci(w->cls->name, u"ComboBox") == 0)
+        return 0;
+    s = sb_state_of(w);
     if (s && s->b[b].vis_set)
         return s->b[b].visible;
     return (w->style & (b == SB_BAR_VERT ? WS_VSCROLL : WS_HSCROLL)) != 0;

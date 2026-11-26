@@ -41,9 +41,11 @@ static void btn_notify(HWND hwnd, UINT code)
     (void)b;
 }
 
+/* the 13x13 box of a check box or radio button at box (Windows: dark ring and mark, blue when hot) */
 static void btn_draw_check(HDC hdc, const RECT *box, int state, int radio, int hot, int enabled)
 {
-    COLORREF border = (hot || state) ? RGB(0x00, 0x78, 0xD7) : RGB(0xAD, 0xAD, 0xAD);
+    COLORREF border = hot ? RGB(0x00, 0x78, 0xD7) : enabled ? RGB(0x33, 0x33, 0x33) : RGB(0xCC, 0xCC, 0xCC);
+    COLORREF mark = enabled ? RGB(0x33, 0x33, 0x33) : RGB(0xAD, 0xAD, 0xAD);
     COLORREF fill = enabled ? RGB(0xFF, 0xFF, 0xFF) : RGB(0xF0, 0xF0, 0xF0);
     HBRUSH br;
     HPEN pen;
@@ -51,24 +53,27 @@ static void btn_draw_check(HDC hdc, const RECT *box, int state, int radio, int h
     RECT b = *box;
 
     if (radio) {
+        br = __aw_gdi32_CreateSolidBrush(fill);
         pen = __aw_gdi32_CreatePen(PS_SOLID, 1, border);
+        oldb = __aw_gdi32_SelectObject(hdc, br);
         oldp = __aw_gdi32_SelectObject(hdc, pen);
-        oldb = __aw_gdi32_SelectObject(hdc, __aw_gdi32_GetStockObject(NULL_BRUSH));
         __aw_gdi32_Ellipse(hdc, b.left, b.top, b.right, b.bottom);
         if (state == BST_CHECKED) {
-            br = __aw_gdi32_CreateSolidBrush(enabled ? RGB(0x33, 0x33, 0x33) : RGB(0x90, 0x90, 0x90));
-            oldp = __aw_gdi32_SelectObject(hdc, br);
-            __aw_gdi32_Ellipse(hdc, b.left + 4, b.top + 4, b.right - 4, b.bottom - 4);
-            __aw_gdi32_SelectObject(hdc, oldp);
-            __aw_gdi32_DeleteObject(br);
+            HBRUSH dot = __aw_gdi32_CreateSolidBrush(mark);
+            HPEN dotpen = __aw_gdi32_CreatePen(PS_SOLID, 1, mark);
+            __aw_gdi32_SelectObject(hdc, dot);
+            __aw_gdi32_SelectObject(hdc, dotpen);
+            __aw_gdi32_Ellipse(hdc, b.left + 3, b.top + 3, b.right - 3, b.bottom - 3);
+            __aw_gdi32_DeleteObject(dot);
+            __aw_gdi32_DeleteObject(dotpen);
         }
         __aw_gdi32_SelectObject(hdc, oldb);
         __aw_gdi32_SelectObject(hdc, oldp);
+        __aw_gdi32_DeleteObject(br);
         __aw_gdi32_DeleteObject(pen);
         return;
     }
 
-    ctl_fill(hdc, &b, (HBRUSH)__aw_gdi32_GetStockObject(WHITE_BRUSH));
     {
         HBRUSH fb = __aw_gdi32_CreateSolidBrush(fill);
         __aw_user32_FillRect(hdc, &b, fb);
@@ -76,11 +81,11 @@ static void btn_draw_check(HDC hdc, const RECT *box, int state, int radio, int h
     }
     ctl_frame(hdc, &b, border);
     if (state == BST_CHECKED || state == BST_INDETERMINATE) {
-        pen = __aw_gdi32_CreatePen(PS_SOLID, 2, enabled ? RGB(0x33, 0x33, 0x33) : RGB(0x90, 0x90, 0x90));
+        pen = __aw_gdi32_CreatePen(PS_SOLID, 2, mark);
         oldp = __aw_gdi32_SelectObject(hdc, pen);
         if (state == BST_INDETERMINATE) {
             RECT r;
-            br = __aw_gdi32_CreateSolidBrush(RGB(0x33, 0x33, 0x33));
+            br = __aw_gdi32_CreateSolidBrush(mark);
             r.left = b.left + 3;
             r.top = b.top + 3;
             r.right = b.right - 3;
@@ -140,8 +145,8 @@ static void btn_draw(btn_t *b, HWND hwnd, HDC hdc, const RECT *rc, HBRUSH bg)
         int ty = r.top + ctl_font_height(hwnd) / 2;
         SIZE sz = ctl_measure(hwnd, font, text, -1);
         RECT fr = r;
-        if (bg)
-            ctl_fill(hdc, &r, bg);
+        /* transparent like the Windows group box: only the frame and the caption are drawn, so the
+         * controls that sit inside the box (and are stacked below it) keep their pixels */
         fr.top = ty;
         ctl_frame(hdc, &fr, RGB(0xAD, 0xAD, 0xAD));
         if (text[0]) {
@@ -161,36 +166,52 @@ static void btn_draw(btn_t *b, HWND hwnd, HDC hdc, const RECT *rc, HBRUSH bg)
     if (type == BS_CHECKBOX || type == BS_AUTOCHECKBOX || type == BS_3STATE || type == BS_AUTO3STATE ||
         type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON) {
         int radio = (type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON);
-        RECT box;
-        int bh = radio ? 12 : 13;
+        RECT box, tx;
+        int bh = 13;
         int top = r.top + (r.bottom - r.top - bh) / 2;
-        int text_left;
+        UINT tfmt = DT_SINGLELINE | DT_VCENTER | (style & BS_MULTILINE ? DT_WORDBREAK : 0);
+        SIZE sz;
+        if (style & BS_LEFTTEXT)
+            tfmt |= DT_RIGHT;
         if (style & BS_PUSHLIKE) {
             goto push_like;
         }
         if (bg)
             ctl_fill(hdc, &r, bg);
-        box.left = r.left + 2;
-        box.top = top;
-        box.right = box.left + bh;
-        box.bottom = box.top + bh;
-        btn_draw_check(hdc, &box, b->check, radio, b->hot, enabled);
-        tr = r;
         if (style & BS_LEFTTEXT) {
-            box.left = r.right - bh - 2;
-            box.right = box.left + bh;
-            btn_draw_check(hdc, &box, b->check, radio, b->hot, enabled);
-            tr.right = box.left - 4;
-            tr.left += 2;
-            ctl_text(hdc, font, text, tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | (style & BS_MULTILINE ? DT_WORDBREAK : 0), textc);
+            box.left = r.right - bh;
+            box.right = r.right;
+            tr = r;
+            tr.right = box.left - 3;
         } else {
-            text_left = box.right + 4;
-            tr.left = text_left;
-            tr.right = r.right - 2;
-            ctl_text(hdc, font, text, tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | (style & BS_MULTILINE ? DT_WORDBREAK : 0), textc);
+            box.left = r.left;
+            box.right = r.left + bh;
+            tr = r;
+            tr.left = box.right + 3;
         }
-        if (focused)
-            ctl_draw_focus(hdc, &box);
+        box.top = top;
+        box.bottom = top + bh;
+        btn_draw_check(hdc, &box, b->check, radio, b->hot, enabled);
+        if (tr.right < tr.left)
+            tr.right = tr.left;
+        /* the focus rectangle frames the label text, as Windows draws it */
+        sz = ctl_measure(hwnd, font, text, -1);
+        tx.left = (style & BS_LEFTTEXT) ? tr.right - sz.cx : tr.left;
+        if (tx.left < tr.left)
+            tx.left = tr.left;
+        tx.right = tx.left + sz.cx + 2;
+        if (tx.right > tr.right)
+            tx.right = tr.right;
+        tx.top = r.top;
+        tx.bottom = r.bottom;
+        ctl_text(hdc, font, text, tr, tfmt, textc);
+        if (focused && text[0]) {
+            RECT fr = tx;
+            fr.left -= 1;
+            fr.top += 1;
+            fr.bottom -= 1;
+            ctl_draw_focus(hdc, &fr);
+        }
         return;
     }
 
@@ -278,6 +299,56 @@ push_like:
     }
 }
 
+/* whether h is a Button-class window with the given type (style & BS_TYPEMASK) */
+extern int WINAPI __aw_user32_GetClassNameW(HWND, LPWSTR, int);
+
+static int btn_is_type(HWND h, UINT type)
+{
+    WCHAR cls[32];
+    static const char name[] = "button";
+    int i;
+    if (!__aw_user32_GetClassNameW(h, cls, 32))
+        return 0;
+    for (i = 0; name[i]; i++) {
+        WCHAR c = cls[i];
+        if (c >= 'A' && c <= 'Z')
+            c = (WCHAR)(c + 32);
+        if (c != (WCHAR)name[i])
+            return 0;
+    }
+    if (cls[i])
+        return 0;
+    return ((UINT)__aw_user32_GetWindowLongW(h, GWL_STYLE) & BS_TYPEMASK) == type;
+}
+
+/* a click on an auto radio button clears the check of the other auto radio buttons of its group.
+ * A group is the run of siblings in tab (z) order that starts at a WS_GROUP control (or at the first
+ * sibling) and ends before the next WS_GROUP control. */
+static void btn_uncheck_group(HWND hwnd)
+{
+    HWND parent = __aw_user32_GetParent(hwnd);
+    HWND kids[512];
+    int n = 0, i = -1, g;
+    if (!parent)
+        return;
+    for (HWND c = __aw_user32_GetWindow(parent, GW_CHILD); c && n < 512; c = __aw_user32_GetWindow(c, GW_HWNDNEXT)) {
+        if (c == hwnd)
+            i = n;
+        kids[n++] = c;
+    }
+    if (i < 0)
+        return;
+    g = i;
+    while (g > 0 && !(__aw_user32_GetWindowLongW(kids[g], GWL_STYLE) & WS_GROUP))
+        g--;
+    for (int j = g; j < n; j++) {
+        if (j > g && (__aw_user32_GetWindowLongW(kids[j], GWL_STYLE) & WS_GROUP))
+            break;
+        if (j != i && btn_is_type(kids[j], BS_AUTORADIOBUTTON))
+            __aw_user32_SendMessageW(kids[j], BM_SETCHECK, BST_UNCHECKED, 0);
+    }
+}
+
 static void btn_toggle(HWND hwnd, btn_t *b, int notify)
 {
     UINT style = btn_style(hwnd);
@@ -290,37 +361,7 @@ static void btn_toggle(HWND hwnd, btn_t *b, int notify)
         }
     } else if (type == BS_AUTORADIOBUTTON) {
         b->check = BST_CHECKED;
-        /* clear the rest of the group */
-        HWND w = hwnd;
-        HWND parent = __aw_user32_GetParent(hwnd);
-        if (parent) {
-            while (1) {
-                HWND prev = __aw_user32_GetWindow(w, GW_HWNDPREV);
-                if (!prev)
-                    break;
-                if (__aw_user32_GetWindowLongW(prev, GWL_STYLE) & WS_GROUP) {
-                    break;
-                }
-                w = prev;
-            }
-            w = hwnd;
-            while (1) {
-                HWND nx;
-                if (w != hwnd) {
-                    UINT s2 = (UINT)__aw_user32_GetWindowLongW(w, GWL_STYLE);
-                    UINT t2 = s2 & BS_TYPEMASK;
-                    if (t2 == BS_RADIOBUTTON || t2 == BS_AUTORADIOBUTTON) {
-                        __aw_user32_SendMessageW(w, BM_SETCHECK, BST_UNCHECKED, 0);
-                    }
-                }
-                nx = __aw_user32_GetWindow(w, GW_HWNDNEXT);
-                if (!nx)
-                    break;
-                if (__aw_user32_GetWindowLongW(nx, GWL_STYLE) & WS_GROUP)
-                    break;
-                w = nx;
-            }
-        }
+        btn_uncheck_group(hwnd);
     } else if (type == BS_3STATE) {
         /* application driven */
     } else if (type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON) {
@@ -357,7 +398,11 @@ static LRESULT btn_msg(HWND hwnd, btn_t *b, UINT msg, WPARAM wp, LPARAM lp)
         PAINTSTRUCT ps;
         RECT rc;
         HBRUSH bg;
-        if (!ctl_begin(hwnd, WM_CTLCOLORBTN, &hdc, &ps, &rc, &bg))
+        /* a group box is transparent: it must not fill its (large) client area over its controls */
+        int ok = (btn_style(hwnd) & BS_TYPEMASK) == BS_GROUPBOX
+                     ? ctl_begin_nofill(hwnd, WM_CTLCOLORBTN, &hdc, &ps, &rc, &bg)
+                     : ctl_begin(hwnd, WM_CTLCOLORBTN, &hdc, &ps, &rc, &bg);
+        if (!ok)
             return 0;
         btn_draw(b, hwnd, hdc, &rc, bg);
         ctl_end(hwnd, &ps);
@@ -555,6 +600,9 @@ LRESULT WINAPI aw_btn_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
     if (!b)
         return __aw_user32_DefWindowProcW(hwnd, msg, wp, lp);
+    /* a group box is transparent to the mouse (HTTRANSPARENT): the controls it frames get the clicks */
+    if (msg == WM_NCHITTEST && (btn_style(hwnd) & BS_TYPEMASK) == BS_GROUPBOX)
+        return (LRESULT)-1;
     {
         LRESULT r = btn_msg(hwnd, b, msg, wp, lp);
         if (r != -1)

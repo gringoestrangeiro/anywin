@@ -839,6 +839,15 @@ API(msvcrt, size_t, wcslen, (const WCHAR *s))
     return aw_wcslen(s);
 }
 
+API(msvcrt, int, wcscmp, (const WCHAR *a, const WCHAR *b))
+{
+    while (*a && *a == *b) {
+        a++;
+        b++;
+    }
+    return (int)*a - (int)*b;
+}
+
 API(msvcrt, char *, strcpy, (char *d, const char *s))
 {
     return strcpy(d, s);

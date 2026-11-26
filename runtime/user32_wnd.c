@@ -136,6 +136,12 @@ void aw_unlink_child(aw_win *w)
     w->prev_sib = w->next_sib = NULL;
 }
 
+/* the dialog class (#32770) is reserved for dialog windows */
+static int parent_is_dialog(aw_win *p)
+{
+    return p->cls && aw_wcmp_ci(p->cls->name, u"#32770") == 0;
+}
+
 /* Child z-order: first_child is the topmost sibling. `after` follows SetWindowPos/CreateWindow rules. */
 void aw_link_child(aw_win *p, aw_win *w, HWND after)
 {
@@ -288,8 +294,9 @@ static void default_top_rect(int *x, int *y, int *cx, int *cy)
     if (*cy < 0) *cy = 0;
 }
 
+/* unicode: charset of the arguments; wcs: charset of a built-in class window (the creator's) */
 static HWND create_window(DWORD exstyle, const void *clsp, const void *name, DWORD style, int x, int y, int cx,
-                          int cy, HWND parent, HMENU menu, HINSTANCE hinst, void *param, int unicode)
+                          int cy, HWND parent, HMENU menu, HINSTANCE hinst, void *param, int unicode, int wcs)
 {
     aw_user_init();
     ATOM catom;
@@ -339,6 +346,7 @@ static HWND create_window(DWORD exstyle, const void *clsp, const void *name, DWO
     w->cls = c;
     w->proc = c->proc;
     w->unicode = c->unicode;
+    w->wcs = c->builtin ? wcs : c->unicode;
     w->style = style;
     w->exstyle = exstyle;
     w->hinst = hinst ? hinst : c->hinst;
@@ -383,7 +391,10 @@ static HWND create_window(DWORD exstyle, const void *clsp, const void *name, DWO
     w->rect.right = x + cx;
     w->rect.bottom = y + cy;
     if (is_child)
-        aw_link_child(pw, w, HWND_TOP);
+        /* a control created in a dialog goes to the bottom of the sibling list: the sibling order is
+         * the tab order and the radio-group order, which follow creation order (as the dialog manager
+         * lays out template controls); other children keep the usual topmost placement */
+        aw_link_child(pw, w, parent_is_dialog(pw) ? HWND_BOTTOM : HWND_TOP);
     aw_nc_calc(w);
 
     create_blk cs;
@@ -477,11 +488,8 @@ static HWND create_window(DWORD exstyle, const void *clsp, const void *name, DWO
             aw_call_proc(par, WM_PARENTNOTIFY, (WPARAM)(WM_CREATE | ((uintptr_t)ww->id << 16)), (LPARAM)h,
                          par->unicode);
     }
-    if (!is_msg) {
-        int cw = ww->rect.right - ww->rect.left, ch = ww->rect.bottom - ww->rect.top;
-        aw_call_proc(ww, WM_SIZE, SIZE_RESTORED, MAKELONG(cw, ch), ww->unicode);
-        aw_call_proc(ww, WM_MOVE, 0, MAKELONG(ww->rect.left, ww->rect.top), ww->unicode);
-    }
+    /* WM_SIZE / WM_MOVE are sent when the window is first shown (aw_show_window), not during
+     * creation: a window must not see them before its creator has stored its state */
     if (style & WS_VISIBLE) {
         aw_win *vw = aw_win_from_hwnd(h);
         if (vw)
@@ -494,13 +502,19 @@ API(user32, HWND, CreateWindowExA,
     (DWORD ex, LPCSTR cls, LPCSTR name, DWORD style, int x, int y, int cx, int cy, HWND parent, HMENU menu,
      HINSTANCE hi, LPVOID param))
 {
-    return create_window(ex, cls, name, style, x, y, cx, cy, parent, menu, hi, param, 0);
+    return create_window(ex, cls, name, style, x, y, cx, cy, parent, menu, hi, param, 0, 0);
 }
 API(user32, HWND, CreateWindowExW,
     (DWORD ex, LPCWSTR cls, LPCWSTR name, DWORD style, int x, int y, int cx, int cy, HWND parent, HMENU menu,
      HINSTANCE hi, LPVOID param))
 {
-    return create_window(ex, cls, name, style, x, y, cx, cy, parent, menu, hi, param, 1);
+    return create_window(ex, cls, name, style, x, y, cx, cy, parent, menu, hi, param, 1, 1);
+}
+
+HWND aw_create_window_cs(DWORD ex, LPCWSTR cls, LPCWSTR name, DWORD style, int x, int y, int cx, int cy, HWND parent,
+                         HMENU menu, HINSTANCE hi, LPVOID param, int wcs)
+{
+    return create_window(ex, cls, name, style, x, y, cx, cy, parent, menu, hi, param, 1, wcs);
 }
 
 /* ------------------------------------------------------------------ destruction */
@@ -577,7 +591,7 @@ API(user32, BOOL, IsWindow, (HWND h)) { return aw_hwnd_valid(h) || h == aw_deskt
 API(user32, BOOL, IsWindowUnicode, (HWND h))
 {
     aw_win *w = aw_win_from_hwnd(h);
-    return w ? w->unicode : 0;
+    return w ? w->wcs : 0;
 }
 
 API(user32, HWND, GetDesktopWindow, (void)) { return aw_desktop_hwnd; }
@@ -793,6 +807,7 @@ static LONG_PTR set_wl(HWND h, int idx, LONG_PTR val, int size, int unicode)
     case -4:
         w->proc = (WNDPROC)val;
         w->unicode = unicode;
+        w->wcs = unicode;
         return old;
     case -6: w->hinst = (HINSTANCE)val; return old;
     case -8: {

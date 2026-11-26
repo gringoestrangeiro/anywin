@@ -95,7 +95,9 @@ void aw_clip_chain(const aw_win *w, aw_region *g)
         RECT pc;
         aw_win_client_surf_rect(p, &pc);
         rgn_intersect_rect(g, &pc);
-        for (HWND s = p->first_child; s && s != cur->hwnd;) {
+        /* siblings above cur hide it only when cur has WS_CLIPSIBLINGS (as on Windows: dialog controls
+         * do not have it, so a transparent group box stacked above its controls does not hide them) */
+        for (HWND s = p->first_child; s && s != cur->hwnd && (cur->style & WS_CLIPSIBLINGS);) {
             aw_win *sw = from(s);
             if (!sw)
                 break;
@@ -132,6 +134,10 @@ void aw_visible_region(const aw_win *w, aw_region *out)
     aw_win_client_surf_rect(w, &cr);
     rgn_set_rect(out, &cr);
     aw_clip_chain(w, out);
+    /* children are excluded only with WS_CLIPCHILDREN: otherwise the parent's background shows under
+     * its transparent children (group boxes, static text), and the children paint over it */
+    if (!(w->style & WS_CLIPCHILDREN))
+        return;
     for (HWND c = w->first_child; c;) {
         aw_win *cw = from(c);
         if (!cw)
@@ -218,6 +224,7 @@ BOOL aw_show_window(aw_win *w, int cmd)
     }
     w->visible = want ? 1 : 0;
     if (want && !was) {
+        int first_show = !w->shown_once;
         w->shown_once = 1;
         w->nc_invalid = 1;
         aw_invalidate(w, NULL, 1);
@@ -228,6 +235,13 @@ BOOL aw_show_window(aw_win *w, int cmd)
                 aw_invalidate(p, &w->rect, 0);
             }
             invalidate_siblings(w, &w->rect);
+        }
+        if (first_show) {
+            /* the size and position reach the window when it first appears (as on Windows);
+             * WM_SIZE carries the client area size, never the outer size */
+            int cw = w->client.right - w->client.left, ch = w->client.bottom - w->client.top;
+            aw_call_proc(w, WM_SIZE, SIZE_RESTORED, MAKELONG(cw, ch), w->unicode);
+            aw_call_proc(w, WM_MOVE, 0, MAKELONG(w->rect.left, w->rect.top), w->unicode);
         }
     }
     if (!want && was && w->parent) {
@@ -409,10 +423,16 @@ API(user32, BOOL, SetWindowPos, (HWND h, HWND after, int x, int y, int cx, int c
     if (!w)
         return FALSE;
     flags = wp.flags;
+    int ocw = w->client.right - w->client.left, och = w->client.bottom - w->client.top;
     apply_geometry(w, wp.x, wp.y, wp.cx, wp.cy, flags, 0);
     w = from(h);
     if (!w)
         return FALSE;
+    /* the client area may change size without the window size changing (a scroll bar appears
+     * or vanishes): WM_SIZE is sent whenever the client size changes, even with SWP_NOSIZE */
+    if (w->client.right - w->client.left != ocw || w->client.bottom - w->client.top != och)
+        flags &= ~(UINT)SWP_NOSIZE;
+    wp.flags = flags;
     if (!(flags & SWP_NOZORDER) && w->parent) {
         aw_win *p = from(w->parent);
         if (p) {

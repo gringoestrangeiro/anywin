@@ -34,6 +34,8 @@ static inline const char *aw_normalize_module(const char *dll)
         return "user32";
     if (!strcmp(buf, "wsock32"))
         return "ws2_32";
+    if (!strcmp(buf, "spoolss"))
+        return "winspool";
     for (char *p = buf; *p; p++)
         if (!isalnum((unsigned char)*p) && *p != '_')
             *p = '_';

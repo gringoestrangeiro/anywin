@@ -125,6 +125,15 @@ aw_wndclass *aw_class_find(const WCHAR *name, ATOM atom)
     return NULL;
 }
 
+void aw_class_mark_builtin(const WCHAR *name)
+{
+    pthread_mutex_lock(&aw_wnd_lock);
+    aw_wndclass *c = aw_class_find(name, 0);
+    if (c)
+        c->builtin = 1;
+    pthread_mutex_unlock(&aw_wnd_lock);
+}
+
 static void class_free(aw_wndclass *c)
 {
     free(c->menu_name);

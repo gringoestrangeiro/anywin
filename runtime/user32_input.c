@@ -9,7 +9,11 @@
 #define TME_LEAVE_FLAG 0x00000002
 #define TME_CANCEL_FLAG 0x80000000u
 
+/* aw_key_state is the key state of the message being processed (GetKeyState, GetKeyboardState): it is
+ * copied from each input message when the message is retrieved, as on Windows.  aw_key_live is the state
+ * as the X events left it (GetAsyncKeyState); it runs ahead of the messages when they queue up. */
 uint8_t aw_key_state[256];   /* bit 0x80: down; bit 0x01: toggled (CAPSLOCK, NUMLOCK, SCROLL) */
+uint8_t aw_key_live[256];
 static int g_cursor_count;
 extern int aw_tray_handle_event(aw_plat_event *ev) __attribute__((weak));
 
@@ -30,7 +34,7 @@ void aw_key_set(int vk, int down, int toggled)
 {
     if (vk < 0 || vk > 255)
         return;
-    aw_key_state[vk] = (uint8_t)((down ? 0x80 : 0) | (toggled ? 0x01 : 0));
+    aw_key_live[vk] = (uint8_t)((down ? 0x80 : 0) | (toggled ? 0x01 : 0));
 }
 
 int aw_is_alt_down(void) { return (aw_key_state[0x12] & 0x80) != 0; }
@@ -256,7 +260,7 @@ static int is_toggle_vk(int vk) { return vk == 0x14 || vk == 0x90 || vk == 0x91;
 API(user32, SHORT, GetAsyncKeyState, (int vk))
 {
     if (vk < 0 || vk > 255) return 0;
-    return (aw_key_state[vk] & 0x80) ? (SHORT)0x8000 : 0;
+    return (aw_key_live[vk] & 0x80) ? (SHORT)0x8000 : 0;
 }
 
 API(user32, SHORT, GetKeyState, (int vk))
@@ -280,7 +284,7 @@ API(user32, BOOL, SetKeyboardState, (BYTE *buf))
 {
     if (!buf) return FALSE;
     for (int i = 0; i < 256; i++)
-        aw_key_state[i] = buf[i];
+        aw_key_state[i] = aw_key_live[i] = buf[i];
     return TRUE;
 }
 
@@ -342,8 +346,12 @@ static aw_win *child_hit(aw_win *p, int sx, int sy)
                 RECT r;
                 aw_win_surf_rect(cw, &r);
                 if (sx >= r.left && sx < r.right && sy >= r.top && sy < r.bottom) {
-                    hit = cw;
-                    break;
+                    /* a window that answers HTTRANSPARENT (a group box) does not take the mouse */
+                    LRESULT ht = aw_call_proc(cw, WM_NCHITTEST, 0, MAKELONG(sx, sy), cw->unicode);
+                    if (ht != HTTRANSPARENT) {
+                        hit = cw;
+                        break;
+                    }
                 }
             }
             c = cw->next_sib;
@@ -442,9 +450,12 @@ static void button_event(aw_plat_event *ev, int down)
     int cx0, cy0;
     aw_win_client_origin(target, &cx0, &cy0);
     int lx = sx - cx0, ly = sy - cy0;
+    /* X reports the state before a press and including a release, Win32 wants the button that changed
+     * as down during its WM_*BUTTONDOWN and up during its WM_*BUTTONUP */
     uint32_t keys = mk_keys(ev->mods);
-    if (btn == 4) keys |= 0x20; /* MK_XBUTTON1 */
-    if (btn == 5) keys |= 0x40; /* MK_XBUTTON2 */
+    uint32_t bit = btn == 1 ? 0x0001 : btn == 3 ? 0x0002 : btn == 2 ? 0x0010 : btn == 4 ? 0x0020 : btn == 5 ? 0x0040 : 0;
+    if (down) keys |= bit;
+    else keys &= ~bit;
     WPARAM wp = keys;
     if (btn >= 4) wp |= (WPARAM)((btn == 4 ? 1 : 2) << 16); /* XBUTTON1 / XBUTTON2 in the high word */
     UINT msg = button_msg(btn, down, 0);

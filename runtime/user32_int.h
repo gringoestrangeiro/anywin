@@ -1384,7 +1384,9 @@ typedef struct aw_win {
     DWORD tid;
     aw_wndclass *cls;
     WNDPROC proc;
-    int unicode;
+    int unicode;           /* charset of the proc (UTF-16 for the built-in W-natured classes) */
+    int wcs;               /* charset the window was created with (IsWindowUnicode, WM_NOTIFYFORMAT): a
+                            * built-in class takes the creator's A / W, others follow their class */
     UINT style, exstyle;
     WCHAR *text;
     int text_len, text_cap;
@@ -1445,6 +1447,8 @@ typedef struct aw_msg {
     POINT pt;
     void *owned;           /* string buffer converted to the target charset; freed after GetMessage */
     char key_text[8];      /* KEYDOWN/SYSKEYDOWN: UTF-8 text for TranslateMessage */
+    int has_keys;          /* keyboard and mouse input: the key state when the message was generated */
+    uint8_t keys[256];
 } aw_msg;
 
 typedef struct aw_queue {
@@ -1525,6 +1529,13 @@ aw_queue *aw_queue_current(void);
 aw_queue *aw_queue_for_tid(DWORD tid);
 LRESULT aw_send_msg(HWND h, UINT msg, WPARAM w, LPARAM l, int unicode);
 LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode);
+void aw_invalidate_children_in(aw_win *w, const aw_region *area);
+LRESULT aw_call_conv(WNDPROC fn, HWND h, UINT msg, WPARAM wp, LPARAM lp, int src_uni, int dst_uni);
+/* CreateWindowEx with W arguments and an explicit window charset (dialog controls follow their dialog) */
+HWND aw_create_window_cs(DWORD ex, LPCWSTR cls, LPCWSTR name, DWORD style, int x, int y, int cx, int cy, HWND parent,
+                         HMENU menu, HINSTANCE hi, LPVOID param, int wcs);
+/* marks a registered class as one of the runtime built-ins (window charset from the creator) */
+void aw_class_mark_builtin(const WCHAR *name);
 BOOL aw_post_input_text(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, DWORD time, int x, int y, const char *text);
 #define aw_post_input(w, msg, wp, lp, time, x, y) aw_post_input_text((w), (msg), (wp), (lp), (time), (x), (y), NULL)
 LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode);
@@ -1549,6 +1560,8 @@ void aw_capture_set(HWND h);
 void aw_hover_idle(void);
 void aw_apply_cursor(aw_win *w);
 void aw_key_set(int vk, int down, int toggled);
+extern uint8_t aw_key_state[256]; /* key state of the message being processed (see user32_input.c) */
+extern uint8_t aw_key_live[256];  /* key state now (X events); GetAsyncKeyState reads this */
 
 /* user32_icon.c */
 aw_icon *aw_icon_alloc(int w, int h, int cursor);

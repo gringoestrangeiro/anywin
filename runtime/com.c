@@ -81,6 +81,8 @@ API(comctl32, BOOL, InitCommonControlsEx, (const void *icc))
     return TRUE;
 }
 
+API(comctl32, void, InitCommonControls, (void)) { }
+
 /* ole32 and oleaut32 names kept for callers that import them by their home DLL. */
 API(ole32, HRESULT, CoInitialize, (void *reserved))
 {

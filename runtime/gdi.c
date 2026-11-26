@@ -77,12 +77,18 @@ static void obj_free(gdi_obj *o)
     case GDI_OBJ_REGION:
         rgn_free(&o->u.rgn);
         break;
+    case GDI_OBJ_PAL:
+        free(o->u.pal.e);
+        break;
     default:
         break;
     }
     slots[o->slot] = NULL;
     free(o);
 }
+
+gdi_obj *gdi_alloc_obj(int type) { return obj_new(type); }
+HGDIOBJ gdi_obj_handle(const gdi_obj *o) { return obj_handle(o); }
 
 static void select_ref(HGDIOBJ h)
 {
@@ -101,6 +107,9 @@ static void deselect_ref(HGDIOBJ h)
     if (o->selcount == 0 && o->doomed && !o->stock)
         obj_free(o);
 }
+
+void gdi_ref_select(HGDIOBJ h) { select_ref(h); }
+void gdi_ref_deselect(HGDIOBJ h) { deselect_ref(h); }
 
 /* ---------------------------------------------------------------------- */
 /* stock objects                                                           */
@@ -245,6 +254,7 @@ static void select_default_objects(gdi_dc *d)
     d->pen = gdi_stock(AW_STOCK_BLACK_PEN);
     d->brush = gdi_stock(AW_STOCK_WHITE_BRUSH);
     d->font = gdi_stock(AW_STOCK_DEFAULT_GUI_FONT);
+    d->pal = NULL;
     select_ref(d->pen);
     select_ref(d->brush);
     select_ref(d->font);
@@ -281,6 +291,7 @@ static void dc_release(gdi_dc *d)
     deselect_ref(d->brush);
     deselect_ref(d->font);
     deselect_ref(d->bmp);
+    deselect_ref(d->pal);
     if (d->def_bmp) {
         gdi_obj *b = gdi_get(d->def_bmp, GDI_OBJ_BITMAP);
         if (b && b->selcount == 0)

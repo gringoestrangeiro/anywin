@@ -97,6 +97,8 @@ AWU(int, GetWindowTextW, (HWND, LPWSTR, int))
 AWU(BOOL, SetWindowTextW, (HWND, LPCWSTR))
 AWU(int, GetWindowTextLengthW, (HWND))
 AWU(BOOL, InvalidateRect, (HWND, const RECT *, BOOL))
+AWU(BOOL, ValidateRect, (HWND, const RECT *))
+AWK(DWORD, GetTickCount, (void))
 AWU(BOOL, UpdateWindow, (HWND))
 AWU(HDC, BeginPaint, (HWND, PAINTSTRUCT *))
 AWU(BOOL, EndPaint, (HWND, const PAINTSTRUCT *))
@@ -1773,10 +1775,11 @@ typedef struct {
 #define TVIS_STATEIMAGEMASK 0xF000
 #define TVIS_USERMASK 0xF000
 
-#define TVI_ROOT ((HANDLE)(intptr_t)0x10000)
-#define TVI_FIRST ((HANDLE)(intptr_t)0xFFFF0001)
-#define TVI_LAST ((HANDLE)(intptr_t)0xFFFF0002)
-#define TVI_SORT ((HANDLE)(intptr_t)0xFFFF0003)
+/* Windows' values: negative pointer-sized sentinels (the same bit patterns as commctrl.h) */
+#define TVI_ROOT ((HANDLE)(intptr_t)-0x10000)
+#define TVI_FIRST ((HANDLE)(intptr_t)-0x0FFFF)
+#define TVI_LAST ((HANDLE)(intptr_t)-0x0FFFE)
+#define TVI_SORT ((HANDLE)(intptr_t)-0x0FFFD)
 
 #define TVGN_ROOT 0x0000
 #define TVGN_NEXT 0x0001
@@ -1798,8 +1801,10 @@ typedef struct {
 #define TVHT_NOWHERE 0x0001
 #define TVHT_ONITEMICON 0x0002
 #define TVHT_ONITEMLABEL 0x0004
-#define TVHT_ONITEM (TVHT_ONITEMICON | TVHT_ONITEMLABEL)
+#define TVHT_ONITEM (TVHT_ONITEMICON | TVHT_ONITEMLABEL | TVHT_ONITEMSTATEICON)
 #define TVHT_ONITEMSTATEICON 0x0040
+#define TVHT_ONITEMINDENT 0x0008
+#define TVHT_ONITEMRIGHT 0x0020
 #define TVHT_ONITEMBUTTON 0x0010
 #define TVHT_ABOVE 0x0100
 #define TVHT_BELOW 0x0200
@@ -1817,13 +1822,15 @@ typedef struct {
 #define TVN_GETDISPINFOA (TVN_FIRST - 3)
 #define TVN_SETDISPINFOA (TVN_FIRST - 4)
 #define TVN_KEYDOWN (TVN_FIRST - 12)
-#define TVN_SELCHANGINGW (TVN_FIRST - 51)
-#define TVN_SELCHANGEDW (TVN_FIRST - 52)
-#define TVN_ITEMEXPANDINGW (TVN_FIRST - 55)
-#define TVN_ITEMEXPANDEDW (TVN_FIRST - 56)
-#define TVN_DELETEITEMW (TVN_FIRST - 59)
-#define TVN_GETDISPINFOW (TVN_FIRST - 53)
-#define TVN_SETDISPINFOW (TVN_FIRST - 54)
+#define TVN_SELCHANGINGW (TVN_FIRST - 50)
+#define TVN_SELCHANGEDW (TVN_FIRST - 51)
+#define TVN_ITEMEXPANDINGW (TVN_FIRST - 54)
+#define TVN_ITEMEXPANDEDW (TVN_FIRST - 55)
+#define TVN_BEGINDRAGW (TVN_FIRST - 56)
+#define TVN_BEGINRDRAGW (TVN_FIRST - 57)
+#define TVN_DELETEITEMW (TVN_FIRST - 58)
+#define TVN_GETDISPINFOW (TVN_FIRST - 52)
+#define TVN_SETDISPINFOW (TVN_FIRST - 53)
 
 typedef struct {
     UINT mask;
@@ -1865,12 +1872,27 @@ typedef struct {
 
 typedef struct { POINT pt; UINT flags; HANDLE hItem; } TVHITTESTINFO;
 
+/* NMTREEVIEWA and NMTREEVIEWW share one layout; only the text pointers differ */
 typedef struct {
     NMHDR hdr;
+    UINT action;
     TVITEMW itemOld;
     TVITEMW itemNew;
     POINT ptDrag;
 } NMTREEVIEWW;
+typedef struct {
+    NMHDR hdr;
+    UINT action;
+    TVITEMA itemOld;
+    TVITEMA itemNew;
+    POINT ptDrag;
+} NMTREEVIEWA;
+
+typedef struct {
+    NMHDR hdr;
+    WORD wVKey;
+    UINT flags;
+} NMTVKEYDOWN;
 
 /* --------------------------- toolbar ------------------------------- */
 #define TBSTATE_CHECKED 0x01
@@ -2151,6 +2173,7 @@ void ctl_set_notify_unicode(HWND hwnd, int on);
 int ctl_get_notify_unicode(HWND hwnd);
 
 int ctl_begin(HWND hwnd, UINT ctlcolor, HDC *hdc, PAINTSTRUCT *ps, RECT *rc, HBRUSH *bg);
+int ctl_begin_nofill(HWND hwnd, UINT ctlcolor, HDC *hdc, PAINTSTRUCT *ps, RECT *rc, HBRUSH *bg);
 void ctl_end(HWND hwnd, PAINTSTRUCT *ps);
 void ctl_fill(HDC hdc, const RECT *rc, HBRUSH br);
 void ctl_frame(HDC hdc, const RECT *rc, COLORREF color);
@@ -2191,6 +2214,7 @@ LRESULT WINAPI aw_combo_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_combolbox_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_scrollbar_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_listview_proc(HWND, UINT, WPARAM, LPARAM);
+LRESULT WINAPI aw_listbox_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_header_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_progress_proc(HWND, UINT, WPARAM, LPARAM);
 LRESULT WINAPI aw_trackbar_proc(HWND, UINT, WPARAM, LPARAM);

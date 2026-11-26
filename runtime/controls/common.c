@@ -282,6 +282,16 @@ int ctl_begin(HWND hwnd, UINT ctlcolor, HDC *hdc, PAINTSTRUCT *ps, RECT *rc, HBR
     return *hdc != NULL;
 }
 
+/* Like ctl_begin, but the client area is not filled: for a control that paints only part of its
+ * client (a transparent group box must not cover the controls drawn before it) */
+int ctl_begin_nofill(HWND hwnd, UINT ctlcolor, HDC *hdc, PAINTSTRUCT *ps, RECT *rc, HBRUSH *bg)
+{
+    *hdc = __aw_user32_BeginPaint(hwnd, ps);
+    __aw_user32_GetClientRect(hwnd, rc);
+    *bg = ctl_ctlcolor(hwnd, ctlcolor, *hdc);
+    return *hdc != NULL;
+}
+
 void ctl_end(HWND hwnd, PAINTSTRUCT *ps)
 {
     __aw_user32_EndPaint(hwnd, ps);
@@ -416,6 +426,7 @@ static void reg_class(const char *name, WNDPROC proc, UINT style, int dblclk)
     wc.hbrBackground = NULL;
     wc.lpszClassName = wn;
     __aw_user32_RegisterClassExW(&wc);
+    aw_class_mark_builtin(wn);
 }
 
 void aw_controls_register(void)
@@ -430,8 +441,10 @@ void aw_controls_register(void)
     reg_class("Edit", aw_edit_proc, CS_PARENTDC, 1);
     reg_class("ComboBox", aw_combo_proc, CS_PARENTDC, 1);
     reg_class("ComboLBox", aw_combolbox_proc, 0, 1);
-    /* Classes without an implementation (ListBox, ScrollBar, progress, trackbar, ...) are not
-     * registered: CreateWindow then fails with "unknown class", as for any unregistered class. */
+    reg_class("ListBox", aw_listbox_proc, 0, 1);
+    /* Classes without an implementation (ScrollBar, progress, trackbar, ...) are not registered:
+     * CreateWindow then fails with "unknown class", as for any unregistered class. */
     reg_class("SysListView32", aw_listview_proc, 0, 1);
     reg_class("SysHeader32", aw_header_proc, 0, 1);
+    reg_class("SysTreeView32", aw_treeview_proc, 0, 1);
 }

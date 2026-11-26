@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
@@ -129,6 +130,29 @@ static void x_fatal(const char *why) {
     fprintf(stderr, "anywin: X11 connection failed: %s\n", why);
     exit(1);
 }
+
+/* The connection is shared by every thread that calls the platform layer (a window procedure runs on
+ * the thread that owns its window while another thread polls the connection): a request, its reply
+ * and the packets read meanwhile must not interleave.  Recursive, so event dispatch may re-enter. */
+static pthread_mutex_t x_mu;
+static pthread_once_t x_mu_once = PTHREAD_ONCE_INIT;
+static void x_mu_init(void) {
+    pthread_mutexattr_t a;
+    pthread_mutexattr_init(&a);
+    pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&x_mu, &a);
+    pthread_mutexattr_destroy(&a);
+}
+static int x_guard_enter(void) {
+    pthread_once(&x_mu_once, x_mu_init);
+    pthread_mutex_lock(&x_mu);
+    return 0;
+}
+static void x_guard_leave(int *unused) {
+    (void)unused;
+    pthread_mutex_unlock(&x_mu);
+}
+#define X_GUARD() int x_guard_ __attribute__((cleanup(x_guard_leave))) = x_guard_enter()
 
 /* ======================================================================
  * Byte helpers and request builder
@@ -899,19 +923,62 @@ static void dispatch(const uint8_t *p) {
     }
 }
 
-/* Process buffered packets, flush, wait for data or the wake pipe. */
+/* Extra fd sources (plat_add_fd_source): Winsock sockets polled with the X connection. */
+#define FD_SRC_MAX 4
+#define FD_SRC_ENTRIES 256
+static struct {
+    int (*fill)(struct pollfd *, int);
+    void (*ready)(struct pollfd *, int);
+} fd_src[FD_SRC_MAX];
+static volatile int fd_src_n;
+
+void plat_add_fd_source(int (*fill)(struct pollfd *, int), void (*ready)(struct pollfd *, int)) {
+    int n = fd_src_n;
+    if (n >= FD_SRC_MAX) return;
+    fd_src[n].fill = fill;
+    fd_src[n].ready = ready;
+    __sync_synchronize();
+    fd_src_n = n + 1;
+}
+
+/* Process buffered packets, flush, wait for data, the wake pipe or a fd source.
+ * Returns 1 X data, 2 wake-up, 3 a fd source ran (queued messages may be pending), 0 nothing. */
 static int wait_packets(int timeout_ms) {
-    struct pollfd pf[2] = {{X.fd, POLLIN, 0}, {X.wake_r, POLLIN, 0}};
-    int n = poll(pf, 2, timeout_ms);
+    struct pollfd pf[2 + FD_SRC_ENTRIES];
+    int off[FD_SRC_MAX], cnt[FD_SRC_MAX], ns = fd_src_n, np = 2;
+    pf[0].fd = X.fd;
+    pf[0].events = POLLIN;
+    pf[0].revents = 0;
+    pf[1].fd = X.wake_r;
+    pf[1].events = POLLIN;
+    pf[1].revents = 0;
+    for (int i = 0; i < ns; i++) {
+        off[i] = np;
+        cnt[i] = fd_src[i].fill(pf + np, 2 + FD_SRC_ENTRIES - np);
+        if (cnt[i] < 0) cnt[i] = 0;
+        np += cnt[i];
+    }
+    int n = poll(pf, (nfds_t)np, timeout_ms); /* unlocked: other threads may use the connection */
     if (n <= 0) return 0;
+    int r = 0;
     if (pf[1].revents & POLLIN) {
         char junk[64];
         while (read(X.wake_r, junk, sizeof junk) > 0) {
         }
-        return 2;
+        r = 2;
+    } else if (pf[0].revents) {
+        X_GUARD();
+        struct pollfd z = {X.fd, POLLIN, 0};
+        /* another thread may have read the data since the poll: read only if it is still there */
+        if (poll(&z, 1, 0) > 0 && (z.revents & POLLIN)) ib_fill();
+        r = 1;
     }
-    if (pf[0].revents) ib_fill();
-    return 1;
+    for (int i = 0; i < ns; i++)
+        if (cnt[i]) {
+            fd_src[i].ready(pf + off[i], cnt[i]);
+            r = 3;
+        }
+    return r;
 }
 
 static int64_t now_ms(void) {
@@ -1223,6 +1290,7 @@ int plat_init(void) {
 int plat_fd(void) { return X.state == 2 ? X.fd : -1; }
 
 uint32_t plat_window_create(int x, int y, int w, int h, int kind, uint32_t owner) {
+    X_GUARD();
     if (!plat_init()) return 0;
     if (w < 1) w = 1;
     if (h < 1) h = 1;
@@ -1274,6 +1342,7 @@ uint32_t plat_window_create(int x, int y, int w, int h, int kind, uint32_t owner
 }
 
 void plat_window_destroy(uint32_t win) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     for (int i = 0; i < X.ntray; i++)
         if (X.tray[i].win == win) {
@@ -1289,6 +1358,7 @@ void plat_window_destroy(uint32_t win) {
 }
 
 void plat_window_show(uint32_t win, int show) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     struct xwin *w = win_find(win);
     if (w) w->mapped = show != 0;
@@ -1300,6 +1370,7 @@ void plat_window_show(uint32_t win, int show) {
 /* Screen coordinates.  A managed, mapped window under a WM moves through _NET_MOVERESIZE_WINDOW
  * (static gravity: x/y are the client area's top-left); otherwise ConfigureWindow directly. */
 void plat_window_move(uint32_t win, int x, int y, int w, int h) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     if (w < 1) w = 1;
     if (h < 1) h = 1;
@@ -1327,6 +1398,7 @@ void plat_window_move(uint32_t win, int x, int y, int w, int h) {
 }
 
 void plat_window_set_title(uint32_t win, const char *utf8) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     if (!utf8) utf8 = "";
     prop_write(win, A(A_NET_WM_NAME), A(A_UTF8_STRING), 8, utf8, (uint32_t)strlen(utf8));
@@ -1337,6 +1409,7 @@ void plat_window_set_title(uint32_t win, const char *utf8) {
 }
 
 void plat_window_set_icon(uint32_t win, const uint32_t *argb, int w, int h) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     if (!argb || w <= 0 || h <= 0) {
         rq_begin(OP_DeleteProperty, 0);
@@ -1356,6 +1429,7 @@ void plat_window_set_icon(uint32_t win, const uint32_t *argb, int w, int h) {
 }
 
 void plat_window_set_resizable(uint32_t win, int resizable) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     struct xwin *r = win_find(win);
     if (!r) return;
@@ -1364,6 +1438,7 @@ void plat_window_set_resizable(uint32_t win, int resizable) {
 }
 
 void plat_window_activate(uint32_t win) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     if (X.have_wm) {
         uint32_t d[5] = {1, 0, 0, 0, 0}; /* source: application; no timestamp; no active window */
@@ -1382,18 +1457,21 @@ void plat_window_activate(uint32_t win) {
 }
 
 void plat_window_minimize(uint32_t win) {
+    X_GUARD();
     if (X.state != 2 || !win || !X.have_wm) return;
     uint32_t d[5] = {3, 0, 0, 0, 0}; /* IconicState */
     send_cm(X.root, MASK_SubstructureRedirect | MASK_SubstructureNotify, win, A(A_WM_CHANGE_STATE), d);
 }
 
 void plat_window_maximize(uint32_t win, int on) {
+    X_GUARD();
     if (X.state != 2 || !win || !X.have_wm) return;
     uint32_t d[5] = {on ? 1u : 0u, A(A_NET_WM_STATE_MAXIMIZED_VERT), A(A_NET_WM_STATE_MAXIMIZED_HORZ), 1, 0};
     send_cm(X.root, MASK_SubstructureRedirect | MASK_SubstructureNotify, win, A(A_NET_WM_STATE), d);
 }
 
 void plat_window_get_pos(uint32_t win, int *x, int *y) {
+    X_GUARD();
     struct xwin *r = win_find(win);
     int rx = r ? r->x : 0, ry = r ? r->y : 0;
     if (X.state == 2 && win) {
@@ -1467,6 +1545,7 @@ static void put_rect(uint32_t win, int x, int y, int w, int h, const uint32_t *b
 }
 
 void plat_put(uint32_t win, const aw_surface *s, const RECT *r) {
+    X_GUARD();
     if (X.state != 2 || !win || !s) return;
     int x0 = 0, y0 = 0, x1 = s->w, y1 = s->h;
     if (r) {
@@ -1480,6 +1559,7 @@ void plat_put(uint32_t win, const aw_surface *s, const RECT *r) {
 }
 
 void plat_flush(void) {
+    X_GUARD();
     if (X.state == 2) flush_out();
 }
 
@@ -1487,18 +1567,24 @@ int plat_poll(aw_plat_event *ev, int timeout_ms) {
     if (X.state != 2) return 0;
     int64_t end = timeout_ms < 0 ? -1 : now_ms() + timeout_ms;
     for (;;) {
-        if (q_pop(ev)) return 1;
-        if (X.kbd_dirty) refresh_keyboard();
-        if (drain_packets()) continue;
+        {
+            X_GUARD();
+            if (q_pop(ev)) return 1;
+            if (X.kbd_dirty) refresh_keyboard();
+            if (drain_packets()) continue;
+            flush_out(); /* requests must reach the server before we block for events */
+        }
         int rem = -1;
         if (end >= 0) {
             int64_t r = end - now_ms();
             rem = r > 0 ? (int)r : 0;
         }
-        flush_out(); /* requests must reach the server before we block for events */
         int w = wait_packets(rem);
-        if (w == 2) return 0;
-        if (w == 0) return q_pop(ev);
+        if (w == 2 || w == 3) return 0; /* wake-up or fd source: let the caller look at its queue */
+        if (w == 0) {
+            X_GUARD();
+            return q_pop(ev);
+        }
     }
 }
 
@@ -1510,6 +1596,7 @@ void plat_wakeup(void) {
 }
 
 void plat_cursor_pos(int *x, int *y) {
+    X_GUARD();
     *x = 0;
     *y = 0;
     if (X.state != 2) return;
@@ -1588,6 +1675,7 @@ static uint32_t cursor_for(int idc) {
 }
 
 void plat_set_cursor(uint32_t win, int idc) {
+    X_GUARD();
     if (X.state != 2 || !win) return;
     uint32_t cid = idc ? cursor_for(idc) : 0;
     rq_begin(OP_ChangeWindowAttributes, 0);
@@ -1598,6 +1686,7 @@ void plat_set_cursor(uint32_t win, int idc) {
 }
 
 int plat_grab(uint32_t win, int on) {
+    X_GUARD();
     if (X.state != 2) return 0;
     if (!on) {
         rq_begin(OP_UngrabPointer, 0);
@@ -1635,7 +1724,8 @@ int plat_grab(uint32_t win, int on) {
 }
 
 void plat_clipboard_set(const char *utf8) {
-    if (X.state != 2) return;
+    X_GUARD();
+    if (!plat_init()) return; /* the clipboard lives on the X display: connect even without windows */
     free(X.clip_text);
     X.clip_text = utf8 ? strdup(utf8) : NULL;
     if (X.clip_text) ensure_clip_win();
@@ -1686,7 +1776,8 @@ static char *clipboard_fetch_remote(void) {
 }
 
 char *plat_clipboard_get(void) {
-    if (X.state != 2) return NULL;
+    X_GUARD();
+    if (!plat_init()) return NULL;
     if (X.clip_text) return strdup(X.clip_text);
     return clipboard_fetch_remote();
 }
@@ -1699,6 +1790,7 @@ static int tray_index(uint32_t win) {
 }
 
 uint32_t plat_tray_add(int *icon_size) {
+    X_GUARD();
     if (!plat_init() || X.ntray == MAX_TRAY) return 0;
     char name[48];
     snprintf(name, sizeof name, "_NET_SYSTEM_TRAY_S%d", X.screen_num);
@@ -1756,6 +1848,7 @@ void plat_tray_remove(uint32_t win) { plat_window_destroy(win); }
  * shows the tray's ParentRelative background before the first draw) and scales it to the icon
  * size with area averaging. */
 void plat_tray_draw(uint32_t win, const uint32_t *argb, int w, int h) {
+    X_GUARD();
     if (X.state != 2 || !argb || w <= 0 || h <= 0) return;
     int ti = tray_index(win);
     if (ti < 0) return;
@@ -1840,6 +1933,7 @@ void plat_tray_draw(uint32_t win, const uint32_t *argb, int w, int h) {
 }
 
 void plat_bell(void) {
+    X_GUARD();
     if (X.state != 2) return;
     rq_begin(OP_Bell, 0);
     rq_end();

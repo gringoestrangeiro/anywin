@@ -15,95 +15,9 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-typedef uintptr_t SOCKET;
+#include "ws2_int.h"
+
 typedef unsigned int u_int;
-
-#define INVALID_SOCKET ((SOCKET)(~(uintptr_t)0))
-#define SOCKET_ERROR (-1)
-
-/* ---- Windows constants -------------------------------------------------- */
-#define WSADESCRIPTION_LEN 256
-#define WSASYS_STATUS_LEN 128
-#define WSA_FD_SETSIZE 64
-
-typedef struct {
-    WORD wVersion, wHighVersion;
-    char szDescription[WSADESCRIPTION_LEN + 1];
-    char szSystemStatus[WSASYS_STATUS_LEN + 1];
-    unsigned short iMaxSockets;
-    unsigned short iMaxUdpDg;
-    char *lpVendorInfo;
-} WSADATA;
-
-typedef struct {
-    u_int fd_count;
-    SOCKET fd_array[WSA_FD_SETSIZE];
-} win_fd_set;
-
-typedef struct {
-    int32_t tv_sec, tv_usec;
-} win_timeval;
-
-#define WS2_AF_INET 2
-#define WS2_AF_INET6 23
-#define WS2_SOL_SOCKET 0xffff
-#define WS2_SO_REUSEADDR 4
-#define WS2_SO_KEEPALIVE 8
-#define WS2_SO_DONTROUTE 0x10
-#define WS2_SO_BROADCAST 0x20
-#define WS2_SO_LINGER 0x80
-#define WS2_SO_SNDBUF 0x1001
-#define WS2_SO_RCVBUF 0x1002
-#define WS2_SO_SNDTIMEO 0x1005
-#define WS2_SO_RCVTIMEO 0x1006
-#define WS2_SO_ERROR 0x1007
-#define WS2_SO_TYPE 0x1008
-#define WS2_SO_DONTLINGER 0xffffff7f
-
-/* Windows WSAE* codes */
-#define WSAEINTR 10004
-#define WSAEBADF 10009
-#define WSAEACCES 10013
-#define WSAEFAULT 10014
-#define WSAEINVAL 10022
-#define WSAEMFILE 10024
-#define WSAEWOULDBLOCK 10035
-#define WSAEINPROGRESS 10036
-#define WSAEALREADY 10037
-#define WSAENOTSOCK 10038
-#define WSAEDESTADDRREQ 10039
-#define WSAEMSGSIZE 10040
-#define WSAEPROTOTYPE 10041
-#define WSAENOPROTOOPT 10042
-#define WSAEPROTONOSUPPORT 10043
-#define WSAESOCKTNOSUPPORT 10044
-#define WSAEOPNOTSUPP 10045
-#define WSAEAFNOSUPPORT 10047
-#define WSAEADDRINUSE 10048
-#define WSAEADDRNOTAVAIL 10049
-#define WSAENETDOWN 10050
-#define WSAENETUNREACH 10051
-#define WSAENETRESET 10052
-#define WSAECONNABORTED 10053
-#define WSAECONNRESET 10054
-#define WSAENOBUFS 10055
-#define WSAEISCONN 10056
-#define WSAENOTCONN 10057
-#define WSAESHUTDOWN 10058
-#define WSAETIMEDOUT 10060
-#define WSAECONNREFUSED 10061
-#define WSAELOOP 10062
-#define WSAENAMETOOLONG 10063
-#define WSAEHOSTDOWN 10064
-#define WSAEHOSTUNREACH 10065
-#define WSAENOTEMPTY 10066
-#define WSASYSNOTREADY 10091
-#define WSAVERNOTSUPPORTED 10092
-#define WSANOTINITIALISED 10093
-#define WSAHOST_NOT_FOUND 11001
-#define WSATRY_AGAIN 11002
-#define WSANO_RECOVERY 11003
-#define WSANO_DATA 11004
 
 static __thread int wsa_error;
 
@@ -112,6 +26,8 @@ static void set_wsa(int e)
     wsa_error = e;
     aw_set_last_error((DWORD)e);
 }
+
+void ws_set_error(int e) { set_wsa(e); }
 
 /* errno -> WSAE* */
 static int errno_to_wsa(int e)
@@ -125,7 +41,7 @@ static int errno_to_wsa(int e)
     case EINVAL: return WSAEINVAL;
     case EMFILE: case ENFILE: return WSAEMFILE;
     case EAGAIN: return WSAEWOULDBLOCK;
-    case EINPROGRESS: return WSAEINPROGRESS;
+    case EINPROGRESS: return WSAEWOULDBLOCK; /* a non-blocking connect in progress reports WSAEWOULDBLOCK */
     case EALREADY: return WSAEALREADY;
     case ENOTSOCK: return WSAENOTSOCK;
     case EDESTADDRREQ: return WSAEDESTADDRREQ;
@@ -157,6 +73,8 @@ static int errno_to_wsa(int e)
     default: return WSAEINVAL;
     }
 }
+
+int ws_errno_wsa(int e) { return errno_to_wsa(e); }
 
 static int af_to_linux(int af) { return af == WS2_AF_INET6 ? AF_INET6 : af; }
 static int af_to_win(int af) { return af == AF_INET6 ? WS2_AF_INET6 : af; }
@@ -237,6 +155,7 @@ API(ws2_32, SOCKET, socket, (int af, int type, int protocol))
 
 API(ws2_32, int, closesocket, (SOCKET s))
 {
+    ws_async_forget((int)s);
     if (close((int)s) < 0) {
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
@@ -266,6 +185,7 @@ API(ws2_32, int, listen, (SOCKET s, int backlog))
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
     }
+    ws_async_listening((int)s);
     return 0;
 }
 
@@ -279,6 +199,10 @@ API(ws2_32, SOCKET, accept, (SOCKET s, void *addr, int *addrlen))
         return INVALID_SOCKET;
     }
     fcntl(fd, F_SETFD, FD_CLOEXEC);
+    /* as on Windows, the accepted socket starts non-blocking when the listener is */
+    if (fcntl((int)s, F_GETFL) & O_NONBLOCK)
+        fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+    ws_async_accepted((int)s);
     if (addr && addrlen) {
         int n = (int)sl < *addrlen ? (int)sl : *addrlen;
         sa_to_win(&ss, &n);
@@ -296,7 +220,10 @@ API(ws2_32, int, connect, (SOCKET s, const void *name, int namelen))
         return SOCKET_ERROR;
     }
     if (connect((int)s, (struct sockaddr *)&ss, (socklen_t)namelen) < 0) {
-        set_wsa(errno_to_wsa(errno));
+        int e = errno;
+        if (e == EINPROGRESS)
+            ws_async_connecting((int)s);
+        set_wsa(errno_to_wsa(e));
         return SOCKET_ERROR;
     }
     return 0;
@@ -306,6 +233,8 @@ API(ws2_32, int, send, (SOCKET s, const char *buf, int len, int flags))
 {
     ssize_t r = send((int)s, buf, (size_t)len, flags);
     if (r < 0) {
+        if (errno == EAGAIN)
+            ws_async_write_blocked((int)s);
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
     }
@@ -315,6 +244,7 @@ API(ws2_32, int, send, (SOCKET s, const char *buf, int len, int flags))
 API(ws2_32, int, recv, (SOCKET s, char *buf, int len, int flags))
 {
     ssize_t r = recv((int)s, buf, (size_t)len, flags);
+    ws_async_read_done((int)s);
     if (r < 0) {
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
@@ -335,6 +265,8 @@ API(ws2_32, int, sendto, (SOCKET s, const char *buf, int len, int flags, const v
     }
     ssize_t r = sendto((int)s, buf, (size_t)len, flags, to ? (struct sockaddr *)&ss : NULL, (socklen_t)sl);
     if (r < 0) {
+        if (errno == EAGAIN)
+            ws_async_write_blocked((int)s);
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
     }
@@ -346,6 +278,7 @@ API(ws2_32, int, recvfrom, (SOCKET s, char *buf, int len, int flags, void *from,
     struct sockaddr_storage ss;
     socklen_t sl = sizeof ss;
     ssize_t r = recvfrom((int)s, buf, (size_t)len, flags, from ? (struct sockaddr *)&ss : NULL, from ? &sl : NULL);
+    ws_async_read_done((int)s);
     if (r < 0) {
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
@@ -678,11 +611,12 @@ typedef struct {
     char **h_addr_list;
 } win_hostent;
 
+/* x64 SDK layout (psdk _ip_types.h): s_proto precedes s_port */
 typedef struct {
     char *s_name;
     char **s_aliases;
-    short s_port;
     char *s_proto;
+    short s_port;
 } win_servent;
 
 typedef struct {
@@ -720,66 +654,119 @@ static void reset_hostent(void)
     hs.he.h_name = hs.name;
 }
 
-API(ws2_32, void *, gethostbyname, (const char *name))
+/* Name resolution, shared by the synchronous calls (results in hs) and the asynchronous ones
+ * (ws2_async.c, results marshalled into the program's buffer by ws_lookup_*).  Each returns 0
+ * or the WSA error code. */
+typedef struct {
+    char name[256];
+    int naddr;
+    unsigned char addr[16][4];
+} host_res;
+
+typedef struct {
+    char name[128], proto[64];
+    int port; /* network byte order, as servent.s_port */
+} serv_res;
+
+typedef struct {
+    char name[128];
+    int proto;
+} proto_res;
+
+static int resolve_host(const char *name, host_res *out)
 {
     struct addrinfo hints, *res = NULL;
-    if (!name) {
-        set_wsa(WSAHOST_NOT_FOUND);
-        return NULL;
-    }
+    if (!name)
+        return WSAHOST_NOT_FOUND;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_CANONNAME;
     int r = getaddrinfo(name, NULL, &hints, &res);
-    if (r) {
-        set_wsa(r == EAI_AGAIN ? WSATRY_AGAIN : r == EAI_NONAME ? WSAHOST_NOT_FOUND : WSAHOST_NOT_FOUND);
-        return NULL;
-    }
-    reset_hostent();
-    if (res->ai_canonname)
-        snprintf(hs.name, sizeof hs.name, "%s", res->ai_canonname);
-    else
-        snprintf(hs.name, sizeof hs.name, "%s", name);
-    int n = 0;
-    for (struct addrinfo *ai = res; ai && n < 16; ai = ai->ai_next) {
+    if (r)
+        return r == EAI_AGAIN ? WSATRY_AGAIN : WSAHOST_NOT_FOUND;
+    snprintf(out->name, sizeof out->name, "%s", res->ai_canonname ? res->ai_canonname : name);
+    out->naddr = 0;
+    for (struct addrinfo *ai = res; ai && out->naddr < 16; ai = ai->ai_next) {
         if (ai->ai_family != AF_INET || !ai->ai_addr)
             continue;
         const struct sockaddr_in *sin = (const struct sockaddr_in *)ai->ai_addr;
-        memcpy(hs.abuf[n], &sin->sin_addr, 4);
-        hs.addrs[n] = (char *)hs.abuf[n];
-        n++;
+        memcpy(out->addr[out->naddr++], &sin->sin_addr, 4);
     }
-    hs.addrs[n] = NULL;
     freeaddrinfo(res);
-    if (!n) {
-        set_wsa(WSAHOST_NOT_FOUND);
+    return out->naddr ? 0 : WSAHOST_NOT_FOUND;
+}
+
+static int resolve_addr(const char *addr, int len, int type, host_res *out)
+{
+    struct sockaddr_in sin;
+    char host[256];
+    if (!addr || len < 4 || type != WS2_AF_INET)
+        return WSAHOST_NOT_FOUND;
+    memset(&sin, 0, sizeof sin);
+    sin.sin_family = AF_INET;
+    memcpy(&sin.sin_addr, addr, 4);
+    int r = getnameinfo((struct sockaddr *)&sin, sizeof sin, host, sizeof host, NULL, 0, NI_NAMEREQD);
+    if (r && inet_ntop(AF_INET, &sin.sin_addr, host, sizeof host) == NULL)
+        return WSAHOST_NOT_FOUND;
+    snprintf(out->name, sizeof out->name, "%s", host);
+    out->naddr = 1;
+    memcpy(out->addr[0], addr, 4);
+    return 0;
+}
+
+static int resolve_serv(const char *name, const char *proto, serv_res *out)
+{
+    struct servent se, *res = NULL;
+    char buf[1024];
+    if (!name || getservbyname_r(name, proto, &se, buf, sizeof buf, &res) || !res)
+        return WSANO_DATA;
+    snprintf(out->name, sizeof out->name, "%s", se.s_name ? se.s_name : name);
+    snprintf(out->proto, sizeof out->proto, "%s", se.s_proto ? se.s_proto : (proto ? proto : ""));
+    out->port = se.s_port;
+    return 0;
+}
+
+static int resolve_proto(const char *name, proto_res *out)
+{
+    struct protoent pe, *res = NULL;
+    char buf[512];
+    if (!name || getprotobyname_r(name, &pe, buf, sizeof buf, &res) || !res)
+        return WSANO_DATA;
+    snprintf(out->name, sizeof out->name, "%s", pe.p_name ? pe.p_name : name);
+    out->proto = pe.p_proto;
+    return 0;
+}
+
+API(ws2_32, void *, gethostbyname, (const char *name))
+{
+    host_res r;
+    int e = resolve_host(name, &r);
+    if (e) {
+        set_wsa(e);
         return NULL;
     }
+    reset_hostent();
+    snprintf(hs.name, sizeof hs.name, "%s", r.name);
+    for (int i = 0; i < r.naddr; i++) {
+        memcpy(hs.abuf[i], r.addr[i], 4);
+        hs.addrs[i] = (char *)hs.abuf[i];
+    }
+    hs.addrs[r.naddr] = NULL;
     return &hs.he;
 }
 
 API(ws2_32, void *, gethostbyaddr, (const char *addr, int len, int type))
 {
-    struct sockaddr_in sin;
-    char host[256];
-    if (!addr || len < 4 || type != WS2_AF_INET) {
-        set_wsa(WSAHOST_NOT_FOUND);
+    host_res r;
+    int e = resolve_addr(addr, len, type, &r);
+    if (e) {
+        set_wsa(e);
         return NULL;
     }
-    memset(&sin, 0, sizeof sin);
-    sin.sin_family = AF_INET;
-    memcpy(&sin.sin_addr, addr, 4);
-    int r = getnameinfo((struct sockaddr *)&sin, sizeof sin, host, sizeof host, NULL, 0, NI_NAMEREQD);
-    if (r) {
-        if (inet_ntop(AF_INET, &sin.sin_addr, host, sizeof host) == NULL) {
-            set_wsa(WSAHOST_NOT_FOUND);
-            return NULL;
-        }
-    }
     reset_hostent();
-    snprintf(hs.name, sizeof hs.name, "%s", host);
-    memcpy(hs.abuf[0], addr, 4);
+    snprintf(hs.name, sizeof hs.name, "%s", r.name);
+    memcpy(hs.abuf[0], r.addr[0], 4);
     hs.addrs[0] = (char *)hs.abuf[0];
     hs.addrs[1] = NULL;
     return &hs.he;
@@ -787,19 +774,19 @@ API(ws2_32, void *, gethostbyaddr, (const char *addr, int len, int type))
 
 API(ws2_32, void *, getservbyname, (const char *name, const char *proto))
 {
-    struct servent se, *res = NULL;
-    char buf[1024];
-    if (!name || getservbyname_r(name, proto, &se, buf, sizeof buf, &res) || !res) {
-        set_wsa(WSANO_DATA);
+    serv_res r;
+    int e = resolve_serv(name, proto, &r);
+    if (e) {
+        set_wsa(e);
         return NULL;
     }
     memset(&hs.se, 0, sizeof hs.se);
-    snprintf(hs.sname, sizeof hs.sname, "%s", se.s_name ? se.s_name : name);
-    snprintf(hs.sproto, sizeof hs.sproto, "%s", se.s_proto ? se.s_proto : (proto ? proto : ""));
+    snprintf(hs.sname, sizeof hs.sname, "%s", r.name);
+    snprintf(hs.sproto, sizeof hs.sproto, "%s", r.proto);
     hs.saliases[0] = NULL;
     hs.se.s_name = hs.sname;
     hs.se.s_aliases = hs.saliases;
-    hs.se.s_port = se.s_port;
+    hs.se.s_port = (short)r.port;
     hs.se.s_proto = hs.sproto;
     return &hs.se;
 }
@@ -825,18 +812,18 @@ API(ws2_32, void *, getservbyport, (int port, const char *proto))
 
 API(ws2_32, void *, getprotobyname, (const char *name))
 {
-    struct protoent pe, *res = NULL;
-    char buf[512];
-    if (!name || getprotobyname_r(name, &pe, buf, sizeof buf, &res) || !res) {
-        set_wsa(WSANO_DATA);
+    proto_res r;
+    int e = resolve_proto(name, &r);
+    if (e) {
+        set_wsa(e);
         return NULL;
     }
     memset(&hs.pe, 0, sizeof hs.pe);
-    snprintf(hs.pname, sizeof hs.pname, "%s", pe.p_name ? pe.p_name : name);
+    snprintf(hs.pname, sizeof hs.pname, "%s", r.name);
     hs.paliases[0] = NULL;
     hs.pe.p_name = hs.pname;
     hs.pe.p_aliases = hs.paliases;
-    hs.pe.p_proto = pe.p_proto;
+    hs.pe.p_proto = (short)r.proto;
     return &hs.pe;
 }
 
@@ -855,6 +842,114 @@ API(ws2_32, void *, getprotobynumber, (int num))
     hs.pe.p_aliases = hs.paliases;
     hs.pe.p_proto = pe.p_proto;
     return &hs.pe;
+}
+
+/* ---- lookups for the asynchronous calls (ws2_async.c) ------------------- */
+/* The Win32 structure goes at the start of the program's buffer, followed by the pointer
+ * arrays and strings it refers to (absolute addresses inside that buffer), as the synchronous
+ * results lay them out.  Each function sets *need to the size required; it writes the
+ * structure only when buflen can hold it and returns WSAENOBUFS otherwise. */
+static size_t wl_align8(size_t x) { return (x + 7) & ~(size_t)7; }
+
+static int marshal_host(const host_res *r, char *buf, DWORD buflen, DWORD *need)
+{
+    size_t n = (size_t)r->naddr, len = strlen(r->name) + 1;
+    size_t off_al = sizeof(win_hostent), off_addr = off_al + sizeof(char *);
+    size_t off_name = off_addr + (n + 1) * sizeof(char *);
+    size_t off_data = wl_align8(off_name + len);
+    size_t total = off_data + 4 * n;
+    *need = (DWORD)total;
+    if (total > buflen)
+        return WSAENOBUFS;
+    char *aliases[1] = { NULL };
+    char *addrs[17];
+    for (size_t i = 0; i < n; i++) {
+        memcpy(buf + off_data + 4 * i, r->addr[i], 4);
+        addrs[i] = buf + off_data + 4 * i;
+    }
+    addrs[n] = NULL;
+    memcpy(buf + off_name, r->name, len);
+    memcpy(buf + off_al, aliases, sizeof aliases);
+    memcpy(buf + off_addr, addrs, (n + 1) * sizeof(char *));
+    win_hostent he;
+    he.h_name = buf + off_name;
+    he.h_aliases = (char **)(buf + off_al);
+    he.h_addrtype = WS2_AF_INET;
+    he.h_length = 4;
+    he.h_addr_list = (char **)(buf + off_addr);
+    memcpy(buf, &he, sizeof he);
+    return 0;
+}
+
+static int marshal_serv(const serv_res *r, char *buf, DWORD buflen, DWORD *need)
+{
+    size_t off_al = sizeof(win_servent), off_name = off_al + sizeof(char *);
+    size_t off_proto = off_name + strlen(r->name) + 1;
+    size_t total = off_proto + strlen(r->proto) + 1;
+    *need = (DWORD)total;
+    if (total > buflen)
+        return WSAENOBUFS;
+    char *aliases[1] = { NULL };
+    memcpy(buf + off_al, aliases, sizeof aliases);
+    memcpy(buf + off_name, r->name, strlen(r->name) + 1);
+    memcpy(buf + off_proto, r->proto, strlen(r->proto) + 1);
+    win_servent se;
+    se.s_name = buf + off_name;
+    se.s_aliases = (char **)(buf + off_al);
+    se.s_port = (short)r->port;
+    se.s_proto = buf + off_proto;
+    memcpy(buf, &se, sizeof se);
+    return 0;
+}
+
+static int marshal_proto(const proto_res *r, char *buf, DWORD buflen, DWORD *need)
+{
+    size_t off_al = sizeof(win_protoent), off_name = off_al + sizeof(char *);
+    size_t total = off_name + strlen(r->name) + 1;
+    *need = (DWORD)total;
+    if (total > buflen)
+        return WSAENOBUFS;
+    char *aliases[1] = { NULL };
+    memcpy(buf + off_al, aliases, sizeof aliases);
+    memcpy(buf + off_name, r->name, strlen(r->name) + 1);
+    win_protoent pe;
+    pe.p_name = buf + off_name;
+    pe.p_aliases = (char **)(buf + off_al);
+    pe.p_proto = (short)r->proto;
+    memcpy(buf, &pe, sizeof pe);
+    return 0;
+}
+
+int ws_lookup_host(const char *name, char *buf, DWORD buflen, DWORD *need)
+{
+    host_res r;
+    *need = 0;
+    int e = resolve_host(name, &r);
+    return e ? e : marshal_host(&r, buf, buflen, need);
+}
+
+int ws_lookup_addr(const char *addr, int len, int type, char *buf, DWORD buflen, DWORD *need)
+{
+    host_res r;
+    *need = 0;
+    int e = resolve_addr(addr, len, type, &r);
+    return e ? e : marshal_host(&r, buf, buflen, need);
+}
+
+int ws_lookup_serv(const char *name, const char *proto, char *buf, DWORD buflen, DWORD *need)
+{
+    serv_res r;
+    *need = 0;
+    int e = resolve_serv(name, proto, &r);
+    return e ? e : marshal_serv(&r, buf, buflen, need);
+}
+
+int ws_lookup_proto(const char *name, char *buf, DWORD buflen, DWORD *need)
+{
+    proto_res r;
+    *need = 0;
+    int e = resolve_proto(name, &r);
+    return e ? e : marshal_proto(&r, buf, buflen, need);
 }
 
 /* ---- getaddrinfo -------------------------------------------------------- */

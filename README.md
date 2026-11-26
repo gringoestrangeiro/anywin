@@ -10,15 +10,15 @@ No Wine, no PE loader at runtime, no compatibility layer at runtime.
 
 ## Coverage
 
-[![Windows APIs implemented](docs/img/badge-api-b26320f112.svg)](docs/COVERAGE.md)
-[![sample imports](docs/img/badge-imports-b26320f112.svg)](docs/COVERAGE.md)
-[![sample programs](docs/img/badge-programs-b26320f112.svg)](docs/COVERAGE.md)
-[![runtime exports](docs/img/badge-apis-b26320f112.svg)](docs/COVERAGE.md)
+[![Windows APIs implemented](docs/img/badge-api-f925440884.svg)](docs/COVERAGE.md)
+[![sample imports](docs/img/badge-imports-f925440884.svg)](docs/COVERAGE.md)
+[![sample programs](docs/img/badge-programs-f925440884.svg)](docs/COVERAGE.md)
+[![runtime exports](docs/img/badge-apis-f925440884.svg)](docs/COVERAGE.md)
 
-[![coverage map](docs/img/progress-b26320f112.svg)](docs/COVERAGE.md)
+[![coverage map](docs/img/progress-f925440884.svg)](docs/COVERAGE.md)
 
 <!-- coverage-text:start -->
-**Windows APIs implemented: 545 / 18,319 (2.98%).** Started modules: 545 / 4,824 (11.30%). Sample-program imports: 315 / 315 (100.00%). Runtime exports: 649.
+**Windows APIs implemented: 789 / 18,319 (4.31%).** Started modules: 789 / 5,099 (15.47%). Sample-program imports: 572 / 581 (98.45%). Runtime exports: 894.
 <!-- coverage-text:end -->
 
 <sub>One square per item, in the style of the AnyPS5 progress map. The denominator is Microsoft's
@@ -44,7 +44,7 @@ desktop); the relinked program is an ordinary X11 client.
 ## How it works
 
 1. `anywin` reads the PE, resolves its imports against the runtime's export table and
-   relinks the image into an ELF together with `libanywin.o`.
+   relinks the image into a statically linked, stripped ELF together with `libanywin.o`.
 2. The runtime (`runtime/`) implements the Win32 subset in C. The Windows calling convention
    (`ms_abi`) is used at the boundary.
 3. Graphics go through a hand-written X11 wire-protocol client and a small TrueType
@@ -105,7 +105,7 @@ binary for both. Two earlier 7-run series gave the same CPU results within 1% (t
 | Memory, PSS (shared counted once) | **7.7 MB** | 202 MB |
 | Processes | **1** | 9 |
 | Idle CPU (5 s) | **0.0 %** | 1.2 % |
-| On-disk size of the program | 3.4 MB, single static ELF | needs `todo.exe` + Wine install (491 MB in `/usr/lib/wine`) + 375 MB prefix |
+| On-disk size of the program | 2.0 MB, single static ELF (stripped) | needs `todo.exe` + Wine install (491 MB in `/usr/lib/wine`) + 375 MB prefix |
 | One-time setup | relink 95 ms | prefix init ~10 s |
 
 **Console hello world, process start to exit**

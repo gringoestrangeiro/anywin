@@ -17,6 +17,7 @@
 static aw_queue *g_queues;
 static __thread aw_queue *tls_queue;
 static pthread_cond_t g_wake_cond = PTHREAD_COND_INITIALIZER;
+static int g_poller_busy; /* a thread is inside plat_poll; guarded by aw_wnd_lock */
 
 static aw_win *from(HWND h) { return aw_win_from_hwnd(h); }
 
@@ -100,41 +101,58 @@ static int string_kind(UINT msg)
     case 0x0180: /* LB_ADDSTRING */ case 0x0181: /* LB_INSERTSTRING */ case 0x018C: /* LB_SELECTSTRING */
     case 0x018D: /* LB_DIR */ case 0x018F: /* LB_FINDSTRING */ case 0x01A2: /* LB_FINDSTRINGEXACT */
         return 1;
-    case WM_GETTEXT: case 0x0148: /* CB_GETLBTEXT */ case 0x0189: /* LB_GETTEXT */
+    case WM_GETTEXT:
         return 2;
+    case 0x0148: /* CB_GETLBTEXT */ case 0x0189: /* LB_GETTEXT: the index is wParam, the buffer size comes from the LEN message */
+        return 3;
     default:
         return 0;
     }
 }
 
-/* Runs proc(h, msg, w, l) where the params are in src_unicode charset and the proc wants its own. */
-LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode)
+/* Calls fn(h, msg, w, l) with the params converted from src_uni charset to dst_uni (1 = UTF-16).
+ * Used for window procedures and for user dialog procedures (the same message shapes). */
+LRESULT aw_call_conv(WNDPROC fn, HWND h, UINT msg, WPARAM wp, LPARAM lp, int src_uni, int dst_uni)
 {
-    if (!w || !w->proc)
+    if (!fn)
         return 0;
-    HWND h = w->hwnd;
-    WNDPROC proc = w->proc;
     int kind = string_kind(msg);
-    if (!kind || src_unicode == w->unicode)
-        return proc(h, msg, wp, lp);
+    if (!kind || src_uni == dst_uni)
+        return fn(h, msg, wp, lp);
+    if (kind == 3 && lp && !src_uni && dst_uni) {
+        /* A caller of LB_GETTEXT / CB_GETLBTEXT: the W text is read into a buffer of the length the
+         * LEN message reports, then written as bytes (the caller sized its buffer as len + 1) */
+        UINT lenmsg = msg == 0x0189 ? 0x018A /* LB_GETTEXTLEN */ : 0x0149 /* CB_GETLBTEXTLEN */;
+        LRESULT units = fn(h, lenmsg, wp, 0);
+        if (units < 0)
+            return units;
+        WCHAR *tmp = calloc((size_t)units + 1, sizeof(WCHAR));
+        if (!tmp)
+            return -1;
+        LRESULT r = fn(h, msg, wp, (LPARAM)tmp);
+        if (r >= 0)
+            r = aw_w2u_term(tmp, (int)units, (char *)lp, (int)units + 1);
+        free(tmp);
+        return r;
+    }
     if (kind == 1 && lp) {
-        if (src_unicode) { /* W caller -> A proc */
+        if (src_uni) { /* W caller -> A proc */
             char *u = aw_w2u((const WCHAR *)lp, -1);
-            LRESULT r = proc(h, msg, wp, (LPARAM)(u ? u : ""));
+            LRESULT r = fn(h, msg, wp, (LPARAM)(u ? u : ""));
             free(u);
             return r;
         }
         WCHAR *x = aw_u2w((const char *)lp, -1);
-        LRESULT r = proc(h, msg, wp, (LPARAM)(x ? x : aw_wempty));
+        LRESULT r = fn(h, msg, wp, (LPARAM)(x ? x : aw_wempty));
         free(x);
         return r;
     }
     if (kind == 2 && lp && wp > 0) {
         size_t n = (size_t)wp;
-        if (src_unicode) { /* W caller wants WCHARs, A proc fills bytes */
+        if (src_uni) { /* W caller wants WCHARs, A proc fills bytes */
             char *tmp = calloc(n + 1, 1);
             if (!tmp) return 0;
-            LRESULT r = proc(h, msg, (WPARAM)n, (LPARAM)tmp);
+            LRESULT r = fn(h, msg, (WPARAM)n, (LPARAM)tmp);
             int out = aw_u2w_buf(tmp, -1, (WCHAR *)lp, (int)n);
             free(tmp);
             return out > 0 ? out : r;
@@ -142,12 +160,22 @@ LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode)
         /* A caller wants bytes, W proc fills WCHARs */
         WCHAR *tmp = calloc(n + 1, sizeof(WCHAR));
         if (!tmp) return 0;
-        LRESULT r = proc(h, msg, (WPARAM)n, (LPARAM)tmp);
+        LRESULT r = fn(h, msg, (WPARAM)n, (LPARAM)tmp);
         int out = aw_w2u_term(tmp, (int)r, (char *)lp, (int)n);
         free(tmp);
         return out;
     }
-    return proc(h, msg, wp, lp);
+    return fn(h, msg, wp, lp);
+}
+
+/* Runs proc(h, msg, w, l) where the params are in src_unicode charset and the proc wants its own. */
+LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode)
+{
+    if (!w || !w->proc)
+        return 0;
+    if (src_unicode == w->unicode)
+        return w->proc(w->hwnd, msg, wp, lp);
+    return aw_call_conv(w->proc, w->hwnd, msg, wp, lp, src_unicode, w->unicode);
 }
 
 /* Converted copy of the string param of a message for posting to a window of another charset. */
@@ -188,6 +216,10 @@ BOOL aw_post_input_text(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, DWORD time, i
     m->pt.y = y;
     if (text)
         strncpy(m->key_text, text, sizeof m->key_text - 1);
+    if ((msg >= 0x0100 /* WM_KEYFIRST */ && msg <= WM_KEYLAST) || (msg >= WM_MOUSEFIRST && msg <= WM_MOUSEHWHEEL)) {
+        memcpy(m->keys, aw_key_live, sizeof m->keys); /* the key state at the event, see aw_key_state */
+        m->has_keys = 1;
+    }
     pthread_mutex_lock(&aw_wnd_lock);
     queue_append_locked(q, m);
     pthread_mutex_unlock(&aw_wnd_lock);
@@ -511,6 +543,66 @@ static void fill_msg(MSG *m, HWND h, UINT msg, WPARAM wp, LPARAM lp, DWORD time,
     m->pt.y = y;
 }
 
+/* Sleeps until X input, a wake-up from another thread (aw_wake), a socket event, the next timer or
+ * hover deadline, or max_ms (-1 = no limit).  The caller re-checks its queue afterwards.
+ * Only one thread polls the X connection: a wake-up byte is consumed by whichever thread reads it,
+ * so a second poller could sleep through its own wake-up.  The others wait on g_wake_cond. */
+static void idle_wait(aw_queue *q, int max_ms)
+{
+    uint32_t now = aw_tick_ms();
+    int timeout = max_ms;
+    for (aw_timer *t = q->timers; t; t = t->next) {
+        int32_t left = (int32_t)(t->due - now);
+        if (left < 0) left = 0;
+        if (timeout < 0 || left < timeout)
+            timeout = left;
+    }
+    aw_win *hv = from(q->hover);
+    if (hv && hv->tracking_hover) { /* WM_MOUSEHOVER deadline (TME_HOVER, 400 ms) */
+        int32_t left = (int32_t)(q->hover_tick + 400 - now);
+        if (left < 0) left = 0;
+        if (timeout < 0 || left < timeout)
+            timeout = left;
+    }
+    int poller = 0;
+    pthread_mutex_lock(&aw_wnd_lock);
+    if (q->head || q->sent) { /* a post raced with the caller's check: do not sleep */
+        pthread_mutex_unlock(&aw_wnd_lock);
+        return;
+    }
+    if (aw_display && !g_poller_busy) {
+        g_poller_busy = 1;
+        poller = 1;
+    }
+    pthread_mutex_unlock(&aw_wnd_lock);
+    if (poller) {
+        aw_plat_event ev;
+        int got = plat_poll(&ev, timeout);
+        /* the flag is released before the event is dispatched: a handler may pump (nested loops) */
+        pthread_mutex_lock(&aw_wnd_lock);
+        g_poller_busy = 0;
+        pthread_cond_broadcast(&g_wake_cond); /* let a waiting thread take over the poll */
+        pthread_mutex_unlock(&aw_wnd_lock);
+        if (got)
+            aw_input_dispatch(&ev);
+        return;
+    }
+    pthread_mutex_lock(&aw_wnd_lock);
+    if (!q->head && !q->sent) {
+        if (timeout < 0) {
+            pthread_cond_wait(&g_wake_cond, &aw_wnd_lock);
+        } else {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += timeout / 1000;
+            ts.tv_nsec += (long)(timeout % 1000) * 1000000L;
+            if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+            pthread_cond_timedwait(&g_wake_cond, &aw_wnd_lock, &ts);
+        }
+    }
+    pthread_mutex_unlock(&aw_wnd_lock);
+}
+
 /* Returns 1 with *m filled (message removed when `remove`), or 0 when nothing is ready and !block. */
 int aw_get_message(aw_queue *q, MSG *m, HWND filter, UINT min, UINT max, int remove, int block)
 {
@@ -541,6 +633,8 @@ int aw_get_message(aw_queue *q, MSG *m, HWND filter, UINT min, UINT max, int rem
             q->last_pt = a->pt;
             memcpy(q->key_text, a->key_text, sizeof q->key_text);
             if (remove) {
+                if (a->has_keys)
+                    memcpy(aw_key_state, a->keys, sizeof aw_key_state);
                 if (a->owned) {
                     free(q->owned_last);
                     q->owned_last = a->owned;
@@ -597,44 +691,20 @@ int aw_get_message(aw_queue *q, MSG *m, HWND filter, UINT min, UINT max, int rem
             aw_flush_all();
             return 0;
         }
-        /* 5. idle: show what was drawn, then wait */
+        /* 5. idle: show what was drawn, then wait for input, a wake-up, a timer or a socket */
         aw_flush_all();
         aw_hover_idle();
-        int timeout = -1;
-        for (aw_timer *t = q->timers; t; t = t->next) {
-            int32_t left = (int32_t)(t->due - now);
-            if (left < 0) left = 0;
-            if (timeout < 0 || left < timeout)
-                timeout = left;
-        }
-        aw_win *hv = from(q->hover);
-        if (hv && hv->tracking_hover) { /* WM_MOUSEHOVER deadline (TME_HOVER, 400 ms) */
-            int32_t left = (int32_t)(q->hover_tick + 400 - now);
-            if (left < 0) left = 0;
-            if (timeout < 0 || left < timeout)
-                timeout = left;
-        }
-        if (aw_display) {
-            aw_plat_event ev;
-            if (plat_poll(&ev, timeout))
-                aw_input_dispatch(&ev);
-        } else {
-            pthread_mutex_lock(&aw_wnd_lock);
-            if (!q->head && !q->sent) {
-                if (timeout < 0) {
-                    pthread_cond_wait(&g_wake_cond, &aw_wnd_lock);
-                } else {
-                    struct timespec ts;
-                    clock_gettime(CLOCK_REALTIME, &ts);
-                    ts.tv_sec += timeout / 1000;
-                    ts.tv_nsec += (long)(timeout % 1000) * 1000000L;
-                    if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
-                    pthread_cond_timedwait(&g_wake_cond, &aw_wnd_lock, &ts);
-                }
-            }
-            pthread_mutex_unlock(&aw_wnd_lock);
-        }
+        idle_wait(q, -1);
     }
+}
+
+/* MsgWaitForMultipleObjects' sleep: without an X connection nothing wakes the thread but the timeout,
+ * so socket events are polled every 10 ms in that case. */
+void aw_msg_idle_wait(int max_ms)
+{
+    if (!aw_display && (max_ms < 0 || max_ms > 10))
+        max_ms = 10;
+    idle_wait(aw_queue_current(), max_ms);
 }
 
 static BOOL get_message(MSG *m, HWND h, UINT min, UINT max)
@@ -721,6 +791,11 @@ API(user32, LRESULT, DispatchMessageA, (const MSG *m))
     }
     aw_win *w = from(m->hwnd);
     if (!w) return 0;
+    aw_region painted;
+    rgn_init(&painted);
+    if (m->message == WM_PAINT)
+        for (int i = 0; i < w->update.n; i++)
+            rgn_union_rect(&painted, &w->update.r[i]);
     LRESULT r = aw_call_proc(w, m->message, m->wParam, m->lParam, w->unicode);
     if (m->message == WM_PAINT) {
         /* a handler that did not BeginPaint must not be asked again for the same area */
@@ -728,8 +803,10 @@ API(user32, LRESULT, DispatchMessageA, (const MSG *m))
         if (ww) {
             rgn_clear(&ww->update);
             ww->erase_pending = 0;
+            aw_invalidate_children_in(ww, &painted);
         }
     }
+    rgn_free(&painted);
     return r;
 }
 API(user32, LRESULT, DispatchMessageW, (const MSG *m)) { return __aw_user32_DispatchMessageA(m); }
@@ -950,7 +1027,7 @@ LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode)
         return ctlcolor(w, msg, wp);
     case WM_NOTIFYFORMAT:
         if (lp == 3 /* NF_QUERY */ || lp == 4 /* NF_REQUERY */)
-            return w->unicode ? 2 : 1;
+            return w->wcs ? 2 : 1;
         return 0;
     case WM_QUERYOPEN:
         return 0;
@@ -964,17 +1041,24 @@ LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode)
     }
 }
 
+/* DefWindowProc works in the window's proc charset; the caller's A / W arguments are converted */
+static LRESULT AWCALL def_in_proc_charset(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+    aw_win *w = from(h);
+    return w ? aw_defwndproc(w, msg, wp, lp, w->unicode) : 0;
+}
+
 API(user32, LRESULT, DefWindowProcA, (HWND h, UINT msg, WPARAM wp, LPARAM lp))
 {
     aw_win *w = from(h);
     if (!w) return 0;
-    return aw_defwndproc(w, msg, wp, lp, 0);
+    return aw_call_conv((WNDPROC)(void *)def_in_proc_charset, h, msg, wp, lp, 0, w->unicode);
 }
 API(user32, LRESULT, DefWindowProcW, (HWND h, UINT msg, WPARAM wp, LPARAM lp))
 {
     aw_win *w = from(h);
     if (!w) return 0;
-    return aw_defwndproc(w, msg, wp, lp, 1);
+    return aw_call_conv((WNDPROC)(void *)def_in_proc_charset, h, msg, wp, lp, 1, w->unicode);
 }
 API(user32, LRESULT, DefMDIChildProcA, (HWND h, UINT msg, WPARAM wp, LPARAM lp)) { return __aw_user32_DefWindowProcA(h, msg, wp, lp); }
 API(user32, LRESULT, DefMDIChildProcW, (HWND h, UINT msg, WPARAM wp, LPARAM lp)) { return __aw_user32_DefWindowProcW(h, msg, wp, lp); }

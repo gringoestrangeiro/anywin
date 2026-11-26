@@ -521,6 +521,7 @@ int main(int argc, char **argv)
     ld[n++] = (char *)cc;
     ld[n++] = "-static";
     ld[n++] = "-no-pie";
+    ld[n++] = "-s";
     ld[n++] = "-o";
     ld[n++] = (char *)out;
     ld[n++] = obj;

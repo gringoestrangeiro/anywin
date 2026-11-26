@@ -437,13 +437,13 @@ static void cb_paint(HWND hwnd, cb_t *c)
     int closed = cb_closed_h(hwnd);
     int enabled = __aw_user32_IsWindowEnabled(hwnd);
 
-    if (!ctl_begin(hwnd, WM_CTLCOLORLISTBOX, &hdc, &ps, &rc, &bg))
+    /* only the closed face is painted: the rest of a dropped-height window stays transparent */
+    if (!ctl_begin_nofill(hwnd, WM_CTLCOLORLISTBOX, &hdc, &ps, &rc, &bg))
         return;
-    if (!bg)
-        ctl_fill(hdc, &rc, __aw_user32_GetSysColorBrush(COLOR_WINDOW));
     box = rc;
     if (box.bottom > closed)
         box.bottom = closed;
+    ctl_fill(hdc, &box, bg ? bg : __aw_user32_GetSysColorBrush(COLOR_WINDOW));
     if (c->kind == CBS_DROPDOWNLIST)
         cb_draw_text(hwnd, c, hdc, &box, enabled);
     ctl_frame(hdc, &box, c->focused ? RGB(0x00, 0x78, 0xD7) : RGB(0xAD, 0xAD, 0xAD));
@@ -886,6 +886,15 @@ LRESULT WINAPI aw_combo_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         c->hot = -1;
         c->min_visible = CB_DEF_VISIBLE;
         c->style = (int)style;
+        /* the scroll bars of a combo belong to its drop list: the combo window itself shows none */
+        if (style & (WS_VSCROLL | WS_HSCROLL))
+            __aw_user32_SetWindowLongW(hwnd, GWL_STYLE, (LONG)(style & ~(WS_VSCROLL | WS_HSCROLL)));
+        /* the closed face draws its own frame; a client edge would frame the whole dropped height */
+        {
+            LONG ex = __aw_user32_GetWindowLongW(hwnd, GWL_EXSTYLE);
+            if (ex & WS_EX_CLIENTEDGE)
+                __aw_user32_SetWindowLongW(hwnd, GWL_EXSTYLE, ex & ~WS_EX_CLIENTEDGE);
+        }
         c->kind = (int)(style & CBS_TYPE_MASK);
         if (c->kind == 0)
             c->kind = CBS_DROPDOWN;

@@ -129,6 +129,16 @@ API(shell32, HINSTANCE, ShellExecuteW, (HWND hwnd, const WCHAR *verb, const WCHA
     return (HINSTANCE)(intptr_t)r;
 }
 
+API(shell32, HINSTANCE, ShellExecuteA, (HWND hwnd, const char *verb, const char *file, const char *params,
+                                        const char *dir, INT show))
+{
+    (void)hwnd;
+    (void)verb;
+    (void)show;
+    int r = run_shell(file, params, dir);
+    return (HINSTANCE)(intptr_t)r;
+}
+
 /* SHELLEXECUTEINFOW, x64 layout */
 typedef struct {
     DWORD cbSize, fMask;
@@ -209,15 +219,22 @@ static int trash_path(const char *u)
     const char *home = getenv("HOME");
     if (!home || !*home || strlen(home) > 3000)
         return -1;
-    char dir[4096], dst[4096];
+    char dir[4096];
     snprintf(dir, sizeof dir, "%s/.local/share/Trash/files", home);
     mkdir_p(dir);
     const char *base = strrchr(u, '/');
     base = base ? base + 1 : u;
-    snprintf(dst, sizeof dst, "%s/%s", dir, base);
-    for (int i = 1; access(dst, F_OK) == 0 && i < 1000; i++)
-        snprintf(dst, sizeof dst, "%s/%s.%d", dir, base, i);
-    return rename(u, dst);
+    char *target = NULL;
+    if (asprintf(&target, "%s/%s", dir, base) < 0)
+        return -1;
+    for (int i = 1; access(target, F_OK) == 0 && i < 1000; i++) {
+        free(target);
+        if (asprintf(&target, "%s/%s.%d", dir, base, i) < 0)
+            return -1;
+    }
+    int rc = rename(u, target);
+    free(target);
+    return rc;
 }
 
 API(shell32, int, SHFileOperationW, (SHFILEOPSTRUCTW_L * op))

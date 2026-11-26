@@ -122,6 +122,12 @@ void plat_flush(void);
  * timeout or when plat_wakeup() was called.  Must only be called from one thread at a time. */
 int  plat_poll(aw_plat_event *ev, int timeout_ms);
 void plat_wakeup(void);                              /* thread-safe */
+/* Extra descriptors (Winsock sockets) that the blocking wait in plat_poll must watch too.
+ * fill() writes up to max pollfd entries (events set, revents 0) and returns how many; when
+ * poll() reports any of them, ready() gets those same entries back with revents set.  Both run
+ * on the thread that pumps plat_poll.  Up to 4 sources. */
+struct pollfd;
+void plat_add_fd_source(int (*fill)(struct pollfd *pf, int max), void (*ready)(struct pollfd *pf, int n));
 void plat_cursor_pos(int *x, int *y);
 void plat_screen_size(int *w, int *h);
 void plat_set_cursor(uint32_t win, int idc);         /* IDC_* numeric id (32512 = IDC_ARROW ...) */
@@ -204,6 +210,8 @@ void aw_user_init(void);
 void aw_controls_register(void);   /* controls/: Button, Static, Edit, ListBox, ComboBox, ... */
 void aw_dialogs_register(void);    /* dialog.c: "#32770" dialog class, message box class */
 void aw_menus_register(void);      /* menu.c: popup menu window class "#32768" */
+/* marks a registered class as a built-in: its windows take the charset of the creating call */
+void aw_class_mark_builtin(const WCHAR *name);
 
 /* Menu bar hooks (menu.c), called by user32's non-client code for top-level windows with a menu.
  * Coordinates are relative to the window's top-left (window DC coordinates). */
