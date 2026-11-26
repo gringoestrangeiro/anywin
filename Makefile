@@ -34,7 +34,10 @@ $(BUILD)/libanywin.o: $(RT_OBJS)
 test: all
 	tests/run.sh $(BUILD)
 
+coverage: all
+	@python3 tools/coverage/gen.py
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all clean test
+.PHONY: all clean test coverage

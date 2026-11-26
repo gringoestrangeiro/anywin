@@ -6,3 +6,6 @@ build*/
 *.pgm
 *.png
 /todo
+
+__pycache__/
+*.pyc
