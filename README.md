@@ -5,7 +5,8 @@ native Linux ELF that calls Linux implementations of the imported Win32 function
 No Wine, no PE loader at runtime, no compatibility layer at runtime.
 
 > **Status: Stage 1 works.** The first target, `todo.exe` (a MinGW-built Win32 GUI app), relinks
-> and runs. The runtime grows one capability at a time, driven by example executables.
+> and runs fully on a real Cinnamon desktop (window, tray icon, menus, persistence). The runtime
+> grows one capability at a time, driven by example executables.
 
 ## Usage
 
@@ -48,7 +49,11 @@ disk but are not compiled.
 
 ## Results on `todo.exe`
 
-Verified under Xvfb with `ANYWIN_STRICT=1`: clean relink (108 imports, 0 unimplemented), full
+Also checked by hand on a real X11/Cinnamon desktop: everything works, including the system tray.
+Note that `todo.exe` itself hides to the tray when its window is closed with the X button (as on
+Windows); use the tray menu's Exit to quit.
+
+Automated checks, run under Xvfb with `ANYWIN_STRICT=1`: clean relink (108 imports, 0 unimplemented), full
 form and ListView render, add / select / edit / complete / delete / search / column sort, data
 survives a restart, empty-title MessageBox, no unimplemented calls.
 
@@ -96,5 +101,7 @@ Package tests (run individually): `core_env`, `core_stdio`, `core_gui`, `core_gu
 * An open ComboBox drop-list only closes on the next in-app click (clicks outside every app
   window are not delivered); mouse coordinates are relative to the wrong window while another
   top-level holds capture.
-* The XEmbed tray icon used to be mapped by the client, which crashed Cinnamon (Muffin) when
-  the app exited; it is now left to the tray manager. Please report if you still see it.
+* The XEmbed tray icon is left for the tray manager to map. Mapping it ourselves while it was
+  still a root window made Cinnamon's window manager (Muffin) crash when the app exited.
+* If `~/.config` does not exist, the app-data folder cannot be created (a fresh `HOME` in tests
+  needs `.config` created first).
