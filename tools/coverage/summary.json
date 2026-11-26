@@ -1,13 +1,29 @@
 {
- "generated": "2026-11-26T10:48:03Z",
+ "generated": "2026-11-26T10:54:24Z",
+ "inventory": {
+  "source": "Microsoft.Windows.SDK.Win32Metadata",
+  "version": "71.0.45-preview",
+  "published": "2026-11-05",
+  "url": "https://github.com/microsoft/win32metadata/releases/tag/v71.0.45-preview",
+  "dlls": 368,
+  "modules": 316,
+  "functions": 18319
+ },
+ "win32_coverage": {
+  "implemented": 461,
+  "total": 18319,
+  "pct": 2.52
+ },
+ "started_modules": {
+  "implemented": 461,
+  "total": 3837,
+  "pct": 12.01
+ },
  "runtime": {
   "exports": 561,
-  "modules": 8
- },
- "api_coverage": {
-  "covered": 188,
-  "total": 561,
-  "pct": 33.51
+  "modules": 8,
+  "matched": 461,
+  "outside_inventory": 100
  },
  "sample_imports": {
   "covered": 188,
@@ -17,440 +33,2216 @@
  "sample_programs": 15,
  "module_rows": [
   {
-   "module": "advapi32",
-   "exports": 9,
-   "covered": 9,
-   "pct": 100.0,
-   "uncovered": []
-  },
-  {
-   "module": "gdi32",
-   "exports": 51,
-   "covered": 8,
-   "pct": 15.69,
-   "uncovered": [
-    "BitBlt",
-    "CombineRgn",
-    "CreateCompatibleBitmap",
-    "CreateCompatibleDC",
-    "CreateFontW",
-    "CreatePen",
-    "CreateRectRgn",
-    "CreateRectRgnIndirect",
-    "DeleteDC",
-    "Ellipse",
-    "EqualRgn",
-    "ExcludeClipRect",
-    "ExtTextOutW",
-    "GetBkColor",
-    "GetBkMode",
-    "GetClipBox",
-    "GetROP2",
-    "GetRgnBox",
-    "GetTextAlign",
-    "GetTextColor",
-    "GetTextExtentPoint32A",
-    "GetTextExtentPoint32W",
-    "GetTextMetricsA",
-    "GetTextMetricsW",
-    "IntersectClipRect",
-    "LineTo",
-    "MoveToEx",
-    "OffsetRgn",
-    "PatBlt",
-    "Polygon",
-    "Polyline",
-    "PtInRegion",
-    "RectInRegion",
-    "Rectangle",
-    "SelectClipRgn",
-    "SelectObject",
-    "SetPolyFillMode",
-    "SetROP2",
-    "SetRectRgn",
-    "SetTextAlign",
-    "SetViewportOrgEx",
-    "SetWindowOrgEx",
-    "TextOutW"
-   ]
+   "module": "user32",
+   "apis": 780,
+   "implemented": 224,
+   "pct": 28.72,
+   "started": true
   },
   {
    "module": "kernel32",
-   "exports": 132,
-   "covered": 30,
-   "pct": 22.73,
-   "uncovered": [
-    "AcquireSRWLockExclusive",
-    "AcquireSRWLockShared",
-    "CloseHandle",
-    "CreateEventA",
-    "CreateEventExA",
-    "CreateEventExW",
-    "CreateEventW",
-    "CreateMutexExW",
-    "CreateMutexW",
-    "CreateSemaphoreA",
-    "CreateSemaphoreExW",
-    "CreateSemaphoreW",
-    "CreateThread",
-    "DisableThreadLibraryCalls",
-    "DuplicateHandle",
-    "ExitThread",
-    "ExpandEnvironmentStringsA",
-    "ExpandEnvironmentStringsW",
-    "FlsAlloc",
-    "FlsFree",
-    "FlsGetValue",
-    "FlsSetValue",
-    "FreeEnvironmentStrings",
-    "FreeEnvironmentStringsA",
-    "FreeEnvironmentStringsW",
-    "GetCommandLineW",
-    "GetCurrentProcess",
-    "GetCurrentProcessId",
-    "GetCurrentProcessorNumber",
-    "GetCurrentThread",
-    "GetCurrentThreadId",
-    "GetEnvironmentStrings",
-    "GetEnvironmentStringsA",
-    "GetEnvironmentStringsW",
-    "GetEnvironmentVariableW",
-    "GetExitCodeThread",
-    "GetModuleFileNameW",
-    "GetModuleHandleExA",
-    "GetModuleHandleExW",
-    "GetModuleHandleW",
-    "GetStartupInfoW",
-    "GetThreadId",
-    "GetThreadPriority",
-    "GetTickCount",
-    "InitOnceBeginInitialize",
-    "InitOnceComplete",
-    "InitOnceExecuteOnce",
-    "InitOnceInitialize",
-    "InitializeConditionVariable",
-    "InitializeCriticalSectionAndSpinCount",
-    "InitializeCriticalSectionEx",
-    "InitializeSListHead",
-    "InitializeSRWLock",
-    "InterlockedFlushSList",
-    "InterlockedPopEntrySList",
-    "InterlockedPushEntrySList",
-    "LoadLibraryExA",
-    "LoadLibraryExW",
-    "LoadLibraryW",
-    "OpenEventA",
-    "OpenMutexA",
-    "PulseEvent",
-    "QueryDepthSList",
-    "RaiseException",
-    "ReleaseMutex",
-    "ReleaseSRWLockExclusive",
-    "ReleaseSRWLockShared",
-    "ReleaseSemaphore",
-    "ResetEvent",
-    "ResumeThread",
-    "SetCriticalSectionSpinCount",
-    "SetEnvironmentVariableA",
-    "SetEnvironmentVariableW",
-    "SetEvent",
-    "SetThreadAffinityMask",
-    "SetThreadDescription",
-    "SetThreadPriority",
-    "SetThreadPriorityBoost",
-    "SignalObjectAndWait",
-    "SleepConditionVariableCS",
-    "SleepConditionVariableSRW",
-    "SleepEx",
-    "SuspendThread",
-    "SwitchToThread",
-    "TerminateProcess",
-    "TerminateThread",
-    "TlsAlloc",
-    "TlsFree",
-    "TlsSetValue",
-    "TryAcquireSRWLockExclusive",
-    "TryAcquireSRWLockShared",
-    "TryEnterCriticalSection",
-    "UnhandledExceptionFilter",
-    "WaitForMultipleObjects",
-    "WaitForMultipleObjectsEx",
-    "WaitForSingleObject",
-    "WaitForSingleObjectEx",
-    "WaitOnAddress",
-    "WakeAllConditionVariable",
-    "WakeByAddressAll",
-    "WakeByAddressSingle",
-    "WakeConditionVariable"
-   ]
+   "apis": 1585,
+   "implemented": 130,
+   "pct": 8.2,
+   "started": true
   },
   {
-   "module": "msvcrt",
-   "exports": 92,
-   "covered": 72,
-   "pct": 78.26,
-   "uncovered": [
-    "_Exit",
-    "__stdio_common_vsnprintf_s",
-    "_filbuf",
-    "_flsbuf",
-    "_iob",
-    "_snprintf",
-    "_vsnprintf",
-    "fputs",
-    "memmove",
-    "printf",
-    "raise",
-    "realloc",
-    "snprintf",
-    "sprintf",
-    "strchr",
-    "strncpy",
-    "strrchr",
-    "vprintf",
-    "vsnprintf",
-    "vsprintf"
-   ]
-  },
-  {
-   "module": "ntdll",
-   "exports": 2,
-   "covered": 0,
-   "pct": 0.0,
-   "uncovered": [
-    "RtlLookupFunctionEntry",
-    "RtlVirtualUnwind"
-   ]
-  },
-  {
-   "module": "shell32",
-   "exports": 2,
-   "covered": 1,
-   "pct": 50.0,
-   "uncovered": [
-    "Shell_NotifyIconW"
-   ]
-  },
-  {
-   "module": "user32",
-   "exports": 224,
-   "covered": 42,
-   "pct": 18.75,
-   "uncovered": [
-    "AdjustWindowRect",
-    "AdjustWindowRectEx",
-    "AdjustWindowRectExForDpi",
-    "AppendMenuW",
-    "BringWindowToTop",
-    "CallWindowProcA",
-    "CallWindowProcW",
-    "CheckMenuItem",
-    "ChildWindowFromPoint",
-    "ChildWindowFromPointEx",
-    "CloseWindow",
-    "CopyIcon",
-    "CreateMenu",
-    "CreateWindowExW",
-    "DefMDIChildProcA",
-    "DefMDIChildProcW",
-    "DefWindowProcW",
-    "DeleteMenu",
-    "DestroyCursor",
-    "DestroyIcon",
-    "DispatchMessageW",
-    "DrawEdge",
-    "DrawFocusRect",
-    "DrawIcon",
-    "DrawIconEx",
-    "DrawTextA",
-    "DrawTextW",
-    "EnableMenuItem",
-    "EnableScrollBar",
-    "EndMenu",
-    "FindWindowExA",
-    "FindWindowExW",
-    "FindWindowW",
-    "FlashWindow",
-    "FrameRect",
-    "GetActiveWindow",
-    "GetAncestor",
-    "GetAsyncKeyState",
-    "GetCapture",
-    "GetClassInfoA",
-    "GetClassInfoExA",
-    "GetClassInfoExW",
-    "GetClassInfoW",
-    "GetClassLongA",
-    "GetClassLongPtrA",
-    "GetClassLongPtrW",
-    "GetClassLongW",
-    "GetClassNameA",
-    "GetClassNameW",
-    "GetClassWord",
-    "GetCursor",
-    "GetDC",
-    "GetDCEx",
-    "GetDesktopWindow",
-    "GetDlgCtrlID",
-    "GetDoubleClickTime",
-    "GetDpiForSystem",
-    "GetDpiForWindow",
-    "GetFocus",
-    "GetForegroundWindow",
-    "GetKeyState",
-    "GetKeyboardState",
-    "GetMenuItemCount",
-    "GetMenuItemID",
-    "GetMenuState",
-    "GetMessageExtraInfo",
-    "GetMessagePos",
-    "GetMessageTime",
-    "GetMessageW",
-    "GetParent",
-    "GetPropA",
-    "GetPropW",
-    "GetQueueStatus",
-    "GetScrollPos",
-    "GetScrollRange",
-    "GetShellWindow",
-    "GetSubMenu",
-    "GetSysColor",
-    "GetSysColorBrush",
-    "GetSystemMetrics",
-    "GetSystemMetricsForDpi",
-    "GetTopWindow",
-    "GetUpdateRect",
-    "GetUpdateRgn",
-    "GetWindow",
-    "GetWindowDC",
-    "GetWindowLongA",
-    "GetWindowLongPtrA",
-    "GetWindowLongPtrW",
-    "GetWindowLongW",
-    "GetWindowRect",
-    "GetWindowTextLengthA",
-    "GetWindowTextLengthW",
-    "GetWindowThreadProcessId",
-    "GetWindowWord",
-    "InSendMessage",
-    "InSendMessageEx",
-    "InsertMenuA",
-    "InsertMenuItemA",
-    "InsertMenuItemW",
-    "InsertMenuW",
-    "InvalidateRgn",
-    "InvertRect",
-    "IsChild",
-    "IsIconic",
-    "IsMenu",
-    "IsProcessDPIAware",
-    "IsWindow",
-    "IsWindowEnabled",
-    "IsWindowUnicode",
-    "IsZoomed",
-    "KillTimer",
-    "LoadCursorW",
-    "LoadIconW",
-    "LoadImageA",
-    "LoadImageW",
-    "LockWindowUpdate",
-    "MapWindowPoints",
-    "MessageBeep",
-    "MessageBoxExA",
-    "MessageBoxExW",
-    "MessageBoxIndirectA",
-    "MessageBoxIndirectW",
-    "MessageBoxW",
-    "ModifyMenuA",
-    "ModifyMenuW",
-    "PeekMessageA",
-    "PeekMessageW",
-    "PostMessageW",
-    "PostThreadMessageA",
-    "PostThreadMessageW",
-    "RealGetWindowClassA",
-    "RealGetWindowClassW",
-    "RedrawWindow",
-    "RegisterClassExA",
-    "RegisterClassExW",
-    "RegisterClassW",
-    "RegisterWindowMessageA",
-    "RegisterWindowMessageW",
-    "ReleaseCapture",
-    "ReleaseDC",
-    "RemoveMenu",
-    "RemovePropA",
-    "RemovePropW",
-    "ReplyMessage",
-    "ScreenToClient",
-    "SendMessageTimeoutA",
-    "SendMessageTimeoutW",
-    "SendMessageW",
-    "SendNotifyMessageA",
-    "SendNotifyMessageW",
-    "SetActiveWindow",
-    "SetCapture",
-    "SetClassLongA",
-    "SetClassLongPtrW",
-    "SetClassLongW",
-    "SetClassWord",
-    "SetCoalescableTimer",
-    "SetCursor",
-    "SetCursorPos",
-    "SetKeyboardState",
-    "SetParent",
-    "SetProcessDPIAware",
-    "SetPropA",
-    "SetPropW",
-    "SetScrollRange",
-    "SetWindowLongA",
-    "SetWindowLongPtrA",
-    "SetWindowLongPtrW",
-    "SetWindowLongW",
-    "SetWindowTextW",
-    "SetWindowWord",
-    "ShowCursor",
-    "ShowWindowAsync",
-    "TrackMouseEvent",
-    "UnregisterClassA",
-    "UnregisterClassW",
-    "ValidateRect",
-    "ValidateRgn",
-    "WaitMessage",
-    "WindowFromDC",
-    "WindowFromPoint"
-   ]
+   "module": "gdi32",
+   "apis": 431,
+   "implemented": 51,
+   "pct": 11.83,
+   "started": true
   },
   {
    "module": "ws2_32",
-   "exports": 49,
-   "covered": 26,
-   "pct": 53.06,
-   "uncovered": [
-    "FreeAddrInfoW",
-    "GetAddrInfoW",
-    "GetNameInfoW",
-    "InetNtopA",
-    "InetNtopW",
-    "InetPtonA",
-    "InetPtonW",
-    "WSASetLastError",
-    "gethostbyaddr",
-    "gethostbyname",
-    "gethostname",
-    "getnameinfo",
-    "getpeername",
-    "getprotobyname",
-    "getprotobynumber",
-    "getservbyname",
-    "getservbyport",
-    "htonll",
-    "inet_addr",
-    "inet_ntoa",
-    "inet_ntop",
-    "ntohl",
-    "ntohll"
-   ]
+   "apis": 160,
+   "implemented": 45,
+   "pct": 28.12,
+   "started": true
+  },
+  {
+   "module": "advapi32",
+   "apis": 624,
+   "implemented": 9,
+   "pct": 1.44,
+   "started": true
+  },
+  {
+   "module": "shell32",
+   "apis": 257,
+   "implemented": 2,
+   "pct": 0.78,
+   "started": true
+  },
+  {
+   "module": "gdiplus",
+   "apis": 629,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msajapi",
+   "apis": 547,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "icuuc",
+   "apis": 542,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rpcrt4",
+   "apis": 447,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "icuin",
+   "apis": 416,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "oleaut32",
+   "apis": 405,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "shlwapi",
+   "apis": 360,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "opengl32",
+   "apis": 355,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "setupapi",
+   "apis": 334,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ole32",
+   "apis": 319,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wininet",
+   "apis": 296,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "clusapi",
+   "apis": 281,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msi",
+   "apis": 264,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "tapi32",
+   "apis": 249,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wldap32",
+   "apis": 243,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cfgmgr32",
+   "apis": 239,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "crypt32",
+   "apis": 229,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "esent",
+   "apis": 229,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "propsys",
+   "apis": 218,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dbghelp",
+   "apis": 217,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "iphlpapi",
+   "apis": 207,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "netapi32",
+   "apis": 207,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dhcpsapi",
+   "apis": 196,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "fwpuclnt",
+   "apis": 194,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "webservices",
+   "apis": 193,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winmm",
+   "apis": 176,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winspool",
+   "apis": 172,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "odbc32",
+   "apis": 154,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfplat",
+   "apis": 147,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "resutils",
+   "apis": 120,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "comctl32",
+   "apis": 115,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mprapi",
+   "apis": 112,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "p2p",
+   "apis": 108,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "pdh",
+   "apis": 98,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "uiautomationcore",
+   "apis": 98,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "icu",
+   "apis": 95,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "secur32",
+   "apis": 89,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ncrypt",
+   "apis": 88,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "powrprof",
+   "apis": 88,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "chakra",
+   "apis": 85,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msdrm",
+   "apis": 84,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rasapi32",
+   "apis": 84,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "imm32",
+   "apis": 82,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ntdsapi",
+   "apis": 81,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mscms",
+   "apis": 80,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "iscsidsc",
+   "apis": 79,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "urlmon",
+   "apis": 77,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "uxtheme",
+   "apis": 77,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rtm",
+   "apis": 76,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ntdll",
+   "apis": 72,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winscard",
+   "apis": 70,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wtsapi32",
+   "apis": 70,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mapi32",
+   "apis": 66,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winhvplatform",
+   "apis": 66,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dnsapi",
+   "apis": 65,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mf",
+   "apis": 62,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wintrust",
+   "apis": 62,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rpcns4",
+   "apis": 61,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "avifil32",
+   "apis": 60,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wlanapi",
+   "apis": 60,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bcrypt",
+   "apis": 59,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "clfsw32",
+   "apis": 59,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "computecore",
+   "apis": 59,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winhttp",
+   "apis": 59,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winfax",
+   "apis": 56,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winbio",
+   "apis": 55,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "glu32",
+   "apis": 52,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "advpack",
+   "apis": 50,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wsnmp32",
+   "apis": 49,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mpr",
+   "apis": 47,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "hid",
+   "apis": 45,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "httpapi",
+   "apis": 44,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "userenv",
+   "apis": 44,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "computenetwork",
+   "apis": 43,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msvfw32",
+   "apis": 43,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "vmsavedstatedumpprovider",
+   "apis": 43,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msacm32",
+   "apis": 42,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "webauthn",
+   "apis": 42,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bluetoothapis",
+   "apis": 41,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rtutils",
+   "apis": 41,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sensorsutilsv2",
+   "apis": 40,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "usp10",
+   "apis": 40,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ktmw32",
+   "apis": 39,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dxva2",
+   "apis": 38,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "inkobjcore",
+   "apis": 38,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "p2pgraph",
+   "apis": 37,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wdsclientapi",
+   "apis": 37,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cldapi",
+   "apis": 36,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "diagnosticdataquery",
+   "apis": 35,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wevtapi",
+   "apis": 35,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mqrt",
+   "apis": 34,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winusb",
+   "apis": 34,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "authz",
+   "apis": 33,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rtworkq",
+   "apis": 33,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wsmsvc",
+   "apis": 33,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "slc",
+   "apis": 32,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wsdapi",
+   "apis": 32,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dwmapi",
+   "apis": 31,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wdspxe",
+   "apis": 31,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ninput",
+   "apis": 30,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ieframe",
+   "apis": 29,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "spoolss",
+   "apis": 29,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "virtdisk",
+   "apis": 29,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "fltlib",
+   "apis": 28,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "hlink",
+   "apis": 28,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "peerdist",
+   "apis": 28,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3d10",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mrmsupport",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mscoree",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "odbcbcp",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "psapi",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "tdh",
+   "apis": 27,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3dcompiler_47",
+   "apis": 26,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "snmpapi",
+   "apis": 26,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wldp",
+   "apis": 24,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "imagehlp",
+   "apis": 23,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "oledlg",
+   "apis": 23,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "activeds",
+   "apis": 22,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cabinet",
+   "apis": 22,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "comdlg32",
+   "apis": 21,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "icm32",
+   "apis": 21,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wer",
+   "apis": 21,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dciman32",
+   "apis": 20,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "traffic",
+   "apis": 20,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "credui",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cryptxml",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dsparse",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "magnification",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msrating",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "projectedfslib",
+   "apis": 19,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "certadm",
+   "apis": 18,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "davclnt",
+   "apis": 18,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "eappprxy",
+   "apis": 18,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "oleacc",
+   "apis": 18,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "infocardapi",
+   "apis": 17,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "drt",
+   "apis": 16,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msdelta",
+   "apis": 16,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mspatcha",
+   "apis": 16,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mswsock",
+   "apis": 16,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ndfapi",
+   "apis": 16,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dhcpcsvc",
+   "apis": 15,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mdmregistration",
+   "apis": 15,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "tbs",
+   "apis": 15,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wecapi",
+   "apis": 15,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "avrt",
+   "apis": 14,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "computestorage",
+   "apis": 14,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "eappcfg",
+   "apis": 14,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "t2embed",
+   "apis": 14,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "version",
+   "apis": 14,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d2d1",
+   "apis": 13,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "vmdevicehost",
+   "apis": 13,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wdstptc",
+   "apis": 13,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "websocket",
+   "apis": 13,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dcomp",
+   "apis": 12,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "loadperf",
+   "apis": 12,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "srpapi",
+   "apis": 12,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "vertdll",
+   "apis": 12,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3d9",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msdmo",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "newdev",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "prntvpt",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "qwave",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rstrtmgr",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wmvcore",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wofutil",
+   "apis": 11,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_appmodel_runtime_l1_1_1",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cryptui",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dsound",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfsensorgroup",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mssign32",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ntlanman",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sspicli",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "tokenbinding",
+   "apis": 10,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_devices_query_l1_1_0",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bcryptprimitives",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3dcsx",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "drtprov",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "imgutil",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mgmtapi",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mspatchc",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "schannel",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "txfw32",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windowscodecs",
+   "apis": 9,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_appmodel_runtime_l1_1_7",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_tcui_l1_1_4",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_net_isolation_l1_1_0",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "certpoleng",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ksuser",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "netsh",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_media_mediacontrol",
+   "apis": 8,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "amsi",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_tcui_l1_1_0",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_tcui_l1_1_2",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_wsl_api_l1_1_0",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "comsvcs",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ddraw",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dsprop",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "evr",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "fhsvcctl",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msports",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "vssapi",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wdsbp",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "xinput1_4",
+   "apis": 7,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_experience_l1_1_0",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bthprops_cpl",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dhcpcsvc6",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dxgi",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "gpedit",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ksproxy_ax",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rasdlg",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sfc",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wdsmc",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wscapi",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "xmllite",
+   "apis": 6,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_appmodel_runtime_l1_1_3",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_devices_query_l1_1_1",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cryptnet",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3d11",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "elscore",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfreadwrite",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ondemandconnroutehelper",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "scarddlg",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wcmapi",
+   "apis": 5,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_ro_typeresolution_l1_1_1",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "avicap32",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "compstui",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "cscapi",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dbgeng",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dssec",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dsuiext",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "faultrep",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "keycredmgr",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "query",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rpcproxy",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "slcext",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ualapi",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winhvemulation",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "xaudio2_8",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "xolehlp",
+   "apis": 4,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "aclui",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_expandedresources_l1_1_0",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_ro_typeresolution_l1_1_0",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "firewallapi",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "forceinline",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mdmlocalmanagement",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msctfmonitor",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "msimg32",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "opmxbox",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sensapi",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "shdocvw",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wsclient",
+   "apis": 3,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_tcui_l1_1_1",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_tcui_l1_1_3",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_service_core_l1_1_5",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bcp47mrm",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "bindfltapi",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "d3d10_1",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "directml",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "drttransport",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dxcompiler",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "efswrt",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "fontsub",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "fxsutility",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "hhctrl_ocx",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "icmui",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "isolatedwindowsenvironmentutils",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "licenseprotection",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfcore",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfsrcsnk",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mstask",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "netshell",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "normaliz",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "quartz",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_ui",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_ui_xaml",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wnvapi",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "xpsprint",
+   "apis": 2,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_appmodel_runtime_l1_1_6",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_dx_d3dkmt_l1_1_0",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_gaming_deviceinformation_l1_1_0",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_mm_misc_l1_1_1",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_service_core_l1_1_3",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "api_ms_win_service_core_l1_1_4",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "apphelp",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "coremessaging",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dbgmodel",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "deviceaccess",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dflayout",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dinput8",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dmprocessxmlfiltered",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dwrite",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "dxcore",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "gameinput",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "hrtfapo",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mfplay",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mi",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mmdevapi",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "mtxdm",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "ntdllk",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "rometadata",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sas",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "slwga",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "srclient",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "sti",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "verifier",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_ai_machinelearning",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_data_pdf",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "windows_networking",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "winml",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
+  },
+  {
+   "module": "wlanui",
+   "apis": 1,
+   "implemented": 0,
+   "pct": 0.0,
+   "started": false
   }
  ],
  "program_rows": [
@@ -545,5 +2337,115 @@
    "pct": 100.0
   }
  ],
+ "implemented_outside_inventory": {
+  "kernel32": [
+   "FreeEnvironmentStrings",
+   "GetEnvironmentStringsA"
+  ],
+  "msvcrt": [
+   "_Exit",
+   "__C_specific_handler",
+   "___lc_codepage_func",
+   "___mb_cur_max_func",
+   "__acrt_iob_func",
+   "__getmainargs",
+   "__initenv",
+   "__iob_func",
+   "__p___argc",
+   "__p___argv",
+   "__p__acmdln",
+   "__p__commode",
+   "__p__environ",
+   "__p__fmode",
+   "__set_app_type",
+   "__setusermatherr",
+   "__stdio_common_vfprintf",
+   "__stdio_common_vsnprintf_s",
+   "__stdio_common_vsprintf",
+   "_acmdln",
+   "_amsg_exit",
+   "_cexit",
+   "_commode",
+   "_configthreadlocale",
+   "_configure_narrow_argv",
+   "_crt_atexit",
+   "_errno",
+   "_exit",
+   "_filbuf",
+   "_flsbuf",
+   "_fmode",
+   "_initialize_narrow_environment",
+   "_initterm",
+   "_initterm_e",
+   "_iob",
+   "_ismbblead",
+   "_localtime64",
+   "_set_app_type",
+   "_set_invalid_parameter_handler",
+   "_set_new_mode",
+   "_snprintf",
+   "_stricmp",
+   "_strlwr",
+   "_time64",
+   "_vsnprintf",
+   "abort",
+   "atexit",
+   "calloc",
+   "exit",
+   "fclose",
+   "fflush",
+   "fopen",
+   "fprintf",
+   "fputc",
+   "fputs",
+   "fread",
+   "free",
+   "fwrite",
+   "getenv",
+   "localeconv",
+   "malloc",
+   "memcmp",
+   "memcpy",
+   "memmove",
+   "memset",
+   "printf",
+   "putchar",
+   "puts",
+   "raise",
+   "realloc",
+   "setvbuf",
+   "signal",
+   "snprintf",
+   "sprintf",
+   "strcat",
+   "strchr",
+   "strcmp",
+   "strcpy",
+   "strerror",
+   "strftime",
+   "strlen",
+   "strncmp",
+   "strncpy",
+   "strrchr",
+   "strstr",
+   "tolower",
+   "toupper",
+   "vfprintf",
+   "vprintf",
+   "vsnprintf",
+   "vsprintf",
+   "wcslen"
+  ],
+  "ntdll": [
+   "RtlLookupFunctionEntry",
+   "RtlVirtualUnwind"
+  ],
+  "ws2_32": [
+   "InetNtopA",
+   "InetPtonA",
+   "htonll",
+   "ntohll"
+  ]
+ },
  "missing_imports": []
 }
