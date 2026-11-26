@@ -14,6 +14,7 @@ Outputs:
   tools/coverage/summary.json  machine-readable headline numbers
   tools/coverage/data/corpus.json  snapshot of the sample-program imports
 """
+import hashlib
 import json
 import re
 import struct
@@ -349,7 +350,14 @@ def pct_colour(p):
 
 def update_readme(summary):
     path = ROOT / "README.md"
-    text = path.read_text(encoding="utf-8")
+    original = text = path.read_text(encoding="utf-8")
+    digest = hashlib.sha1()
+    for image in sorted(IMG.glob("*.svg")):
+        digest.update(image.name.encode())
+        digest.update(image.read_bytes())
+    version = digest.hexdigest()[:10]
+    text = re.sub(r"(docs/img/(?:progress|badge-[a-z-]+)\.svg)(?:\?v=[0-9a-f]+)?",
+                  rf"\1?v={version}", text)
     block = (
         "<!-- coverage-text:start -->\n"
         f"**Windows APIs implemented: {summary['win32_coverage']['implemented']:,} / "
@@ -362,7 +370,7 @@ def update_readme(summary):
         "<!-- coverage-text:end -->"
     )
     new = re.sub(r"<!-- coverage-text:start -->.*?<!-- coverage-text:end -->", block, text, flags=re.S)
-    if new != text:
+    if new != original:
         path.write_text(new, encoding="utf-8")
 
 

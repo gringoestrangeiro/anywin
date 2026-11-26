@@ -10,12 +10,12 @@ No Wine, no PE loader at runtime, no compatibility layer at runtime.
 
 ## Coverage
 
-[![Windows APIs implemented](docs/img/badge-api.svg)](docs/COVERAGE.md)
-[![sample imports](docs/img/badge-imports.svg)](docs/COVERAGE.md)
-[![sample programs](docs/img/badge-programs.svg)](docs/COVERAGE.md)
-[![runtime exports](docs/img/badge-apis.svg)](docs/COVERAGE.md)
+[![Windows APIs implemented](docs/img/badge-api.svg?v=b46f7694ae)](docs/COVERAGE.md)
+[![sample imports](docs/img/badge-imports.svg?v=b46f7694ae)](docs/COVERAGE.md)
+[![sample programs](docs/img/badge-programs.svg?v=b46f7694ae)](docs/COVERAGE.md)
+[![runtime exports](docs/img/badge-apis.svg?v=b46f7694ae)](docs/COVERAGE.md)
 
-[![coverage map](docs/img/progress.svg)](docs/COVERAGE.md)
+[![coverage map](docs/img/progress.svg?v=b46f7694ae)](docs/COVERAGE.md)
 
 <!-- coverage-text:start -->
 **Windows APIs implemented: 461 / 18,319 (2.52%).** Started modules: 461 / 3,837 (12.01%). Sample-program imports: 188 / 188 (100.00%). Runtime exports: 561.
