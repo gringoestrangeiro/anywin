@@ -31,70 +31,71 @@ What it measures (`tests/bench.py`):
 
 ```json
 {
- "relink_ms": 98.87,
- "anywin_todo_bytes": 3437888,
- "wine_prefix_init_s": 9.74,
+ "relink_ms": 94.72,
+ "anywin_todo_bytes": 3438600,
+ "wine_prefix_init_s": 9.68,
  "wine_prefix_mb": 375,
  "gui": {
   "anywin": {
-   "startup_ms": 14.84,
+   "startup_ms": 15.00,
    "rss_mb": 7.68,
    "pss_mb": 7.68,
    "idle_cpu_pct": 0.0,
    "procs": 1
   },
   "wine": {
-   "startup_ms": 586.04,
-   "rss_mb": 449.30,
-   "pss_mb": 199.33,
-   "idle_cpu_pct": 1.6,
+   "startup_ms": 548.18,
+   "rss_mb": 452.01,
+   "pss_mb": 201.99,
+   "idle_cpu_pct": 1.2,
    "procs": 9
   }
  },
  "console_start_ms": {
-  "anywin": 1.28,
-  "wine_cold": 465.56,
-  "wine_warm": 7.72
+  "anywin": 1.22,
+  "wine_cold": 414.82,
+  "wine_warm": 7.61
  },
  "cpu": {
   "anywin": {
-   "int_loop_ms": 394.0,
+   "int_loop_ms": 391.0,
    "malloc_ms": 57.0,
-   "sort_ms": 316.0,
-   "snprintf_ms": 173.0,
-   "memcpy_ms": 87.0,
-   "total_ms": 1027.0,
-   "wall_ms": 1066.30
+   "sort_ms": 315.0,
+   "snprintf_ms": 167.0,
+   "memcpy_ms": 86.0,
+   "total_ms": 1022.0,
+   "wall_ms": 1065.92
   },
   "wine": {
-   "int_loop_ms": 385.0,
+   "int_loop_ms": 387.0,
    "malloc_ms": 225.0,
-   "sort_ms": 321.0,
+   "sort_ms": 319.0,
    "snprintf_ms": 338.0,
    "memcpy_ms": 81.0,
-   "total_ms": 1348.0,
-   "wall_ms": 1367.63
+   "total_ms": 1351.0,
+   "wall_ms": 1367.77
   }
  },
  "wine_version": "wine-11.11 (Staging)"
 }
 ```
 
-A second 7-run series gave 1023 ms vs 1352 ms total, `snprintf` 173 ms vs 338 ms, `memcpy` 81 ms
-vs 81 ms: the change is well above run-to-run noise.
+Two earlier 7-run series confirmed the change is well above run-to-run noise: CPU totals 1023 and
+1027 ms vs Wine's 1352 and 1348 ms, `snprintf` 173 ms both times vs 338 ms, `memcpy` 81 and 87 ms
+vs 81 ms.
 
 ## Before / after
 
 | Metric | before (`57c40c5`) | after (`75294b7`) | Wine (after run) | Change |
 |---|---|---|---|---|
-| `snprintf_ms` | 836 | **173** | 338 | 4.8x faster |
-| `memcpy_ms` | 137 | **87** | 81 | 1.6x faster, at parity |
-| `cpu.total_ms` | 1756 | **1027** | 1348 | 24% faster than Wine |
-| `int_loop_ms` | 396 | 394 | 385 | unchanged |
+| `snprintf_ms` | 836 | **167** | 338 | 5.0x faster |
+| `memcpy_ms` | 137 | **86** | 81 | 1.6x faster, at parity |
+| `cpu.total_ms` | 1756 | **1022** | 1351 | 24% faster than Wine |
+| `int_loop_ms` | 396 | 391 | 387 | unchanged |
 | `malloc_ms` | 59 | 57 | 225 | unchanged |
-| `sort_ms` | 325 | 316 | 321 | unchanged |
-| `gui.anywin.startup_ms` | 15.14 | 14.84 | 586 | unchanged |
-| `gui.anywin.rss_mb` | 7.69 | 7.68 | 449 | unchanged |
+| `sort_ms` | 325 | 315 | 319 | unchanged |
+| `gui.anywin.startup_ms` | 15.14 | 15.00 | 548 | unchanged |
+| `gui.anywin.rss_mb` | 7.69 | 7.68 | 452 | unchanged |
 
 ## Profile findings
 

@@ -68,39 +68,39 @@ Not done or not tested yet:
 
 Reproduce with `python3 -I tests/bench.py [runs]` (needs `Xvfb`, `xdotool`, `wine`). It uses a private
 Xvfb display, a throw-away `HOME` and a fresh `WINEPREFIX`. Numbers below are medians of 7 runs on
-one machine (12 cores, Linux 6.18, Xvfb, no window manager), 2026-11-26, after the printf/memcpy
-optimization in commit `75294b7`. `todo.exe` is the GUI program; `bench_cpu.exe`
-(`tests/bench_cpu.c`, MinGW `-O2`) is the same binary for both. A second 7-run series gave the same
-picture (CPU total 1023 ms vs 1352 ms, `snprintf` 173 ms vs 338 ms).
+one machine (12 cores, Linux 6.18, Xvfb, no window manager), 2026-11-26, on commit `75294b7`.
+`todo.exe` is the GUI program; `bench_cpu.exe` (`tests/bench_cpu.c`, MinGW `-O2`) is the same
+binary for both. Two earlier 7-run series gave the same CPU results within 1% (totals 1023 and
+1027 ms vs Wine's 1352 and 1348 ms; `snprintf` 173 ms both times vs 338 ms).
 
 **todo.exe (GUI)**
 
 | | anywin | Wine 11.11 |
 |---|---|---|
-| Time to window visible | **15 ms** | 586 ms |
-| Memory, RSS (all processes) | **7.7 MB** | 449 MB |
-| Memory, PSS (shared counted once) | **7.7 MB** | 199 MB |
+| Time to window visible | **15 ms** | 548 ms |
+| Memory, RSS (all processes) | **7.7 MB** | 452 MB |
+| Memory, PSS (shared counted once) | **7.7 MB** | 202 MB |
 | Processes | **1** | 9 |
-| Idle CPU (5 s) | **0.0 %** | 1.6 % |
+| Idle CPU (5 s) | **0.0 %** | 1.2 % |
 | On-disk size of the program | 3.4 MB, single static ELF | needs `todo.exe` + Wine install (491 MB in `/usr/lib/wine`) + 375 MB prefix |
-| One-time setup | relink 99 ms | prefix init ~10 s |
+| One-time setup | relink 95 ms | prefix init ~10 s |
 
 **Console hello world, process start to exit**
 
 | anywin | Wine, cold (no wineserver) | Wine, warm (wineserver running) |
 |---|---|---|
-| **1.3 ms** | 466 ms | 7.7 ms |
+| **1.2 ms** | 415 ms | 7.6 ms |
 
 **CPU / CRT micro-benchmark** (`bench_cpu.exe`, lower is better)
 
 | Test | anywin | Wine |
 |---|---|---|
-| 400M-iteration integer loop | 394 ms | 385 ms |
+| 400M-iteration integer loop | 391 ms | 387 ms |
 | 6M malloc/free | **57 ms** | 225 ms |
-| sort 4M integers | 316 ms | 321 ms |
-| 1.5M `snprintf` (ints, string, float) | **173 ms** | 338 ms |
-| memcpy 2 GB (1 MB blocks) | 87 ms | 81 ms |
-| Total | **1027 ms** | 1348 ms |
+| sort 4M integers | 315 ms | 319 ms |
+| 1.5M `snprintf` (ints, string, float) | **167 ms** | 338 ms |
+| memcpy 2 GB (1 MB blocks) | 86 ms | 81 ms |
+| Total | **1022 ms** | 1351 ms |
 
 Reading the results:
 
