@@ -2,8 +2,8 @@
 # S2 msvcrt-core test (PLAN-CORE 3.2, 5 S2).
 #  1. every Tier 1 msvcrt export (and the aw_msvcrt_init / aw_msvcrt_flush_all hooks) is defined
 #     in libanywin.o
-#  2. tests/core_stdio_probe.c (default mingw-w64 toolchain, UCRT import names) relinks; the only
-#     unimplemented import allowed is __C_specific_handler (SEH package, S8)
+#  2. tests/core_stdio_probe.c (default mingw-w64 toolchain, UCRT import names) relinks; every
+#     import must be implemented
 #  3. the probe runs with TZ=UTC and produces exactly the expected stdout (printf conversions,
 #     width/precision, fopen through backslash paths, fread/fwrite, strftime/localtime, atexit
 #     order C B A after main, stdio plumbing), exactly one stderr line, exit code 0, and the
@@ -73,8 +73,8 @@ fi
 ANYWIN_LDFLAGS=-Wl,--unresolved-symbols=ignore-all "$bin" "$exe" -o "$work" -r "$rtl" >"$work.relink.log" 2>&1 \
     || { cat "$work.relink.log" >&2; fail "relink failed (log $work.relink.log)"; }
 unimpl=$(grep 'not implemented' "$work.relink.log" | sed 's/.*!\([^ ]*\) not implemented.*/\1/' | sort -u)
-[ "$unimpl" = "__C_specific_handler" ] || fail "unexpected unimplemented imports: $unimpl (log $work.relink.log)"
-echo "core_stdio: relink ok, only __C_specific_handler unimplemented (SEH, S8)"
+[ -z "$unimpl" ] || fail "unexpected unimplemented imports: $unimpl (log $work.relink.log)"
+echo "core_stdio: relink ok, all imports implemented"
 
 # 3. run
 rm -rf "$scratch"

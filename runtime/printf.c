@@ -16,10 +16,20 @@
 /* ---- output buffer ------------------------------------------------------ */
 
 typedef struct {
-    char *p;
+    char *p;      /* current buffer: the caller's scratch area or the heap block */
     size_t n, cap;
+    char *heap;   /* set once the output outgrows the scratch area */
     int oom;
 } sbuf;
+
+static void sb_init(sbuf *b, char *scratch, size_t cap)
+{
+    b->p = scratch;
+    b->n = 0;
+    b->cap = scratch ? cap : 0;
+    b->heap = NULL;
+    b->oom = 0;
+}
 
 static void sb_reserve(sbuf *b, size_t add)
 {
@@ -31,12 +41,19 @@ static void sb_reserve(sbuf *b, size_t add)
     size_t nc = b->cap ? b->cap : 256;
     while (nc < need)
         nc *= 2;
-    char *np = realloc(b->p, nc);
+    char *np;
+    if (b->heap) {
+        np = realloc(b->heap, nc);
+    } else {
+        np = malloc(nc);
+        if (np && b->p)
+            memcpy(np, b->p, b->n);
+    }
     if (!np) {
         b->oom = 1;
         return;
     }
-    b->p = np;
+    b->heap = b->p = np;
     b->cap = nc;
 }
 
@@ -194,6 +211,105 @@ static void fmt_int(sbuf *b, const struct spec *sp, uint64_t raw, int is_signed,
         sb_fill(b, ' ', pad);
 }
 
+static const uint64_t pow10_u64[20] = {1ull,
+                                       10ull,
+                                       100ull,
+                                       1000ull,
+                                       10000ull,
+                                       100000ull,
+                                       1000000ull,
+                                       10000000ull,
+                                       100000000ull,
+                                       1000000000ull,
+                                       10000000000ull,
+                                       100000000000ull,
+                                       1000000000000ull,
+                                       10000000000000ull,
+                                       100000000000000ull,
+                                       1000000000000000ull,
+                                       10000000000000000ull,
+                                       100000000000000000ull,
+                                       1000000000000000000ull,
+                                       10000000000000000000ull};
+
+/* Fast path for %f: exact decimal expansion of the binary value using integer arithmetic.
+ * Handles precisions 0..9 when the rounded scaled value fits in 64 bits; other cases go to
+ * the glibc fallback. Produces the sign followed by the digits, like snprintf does. */
+static int fmt_float_fixed(char *body, size_t cap, const struct spec *sp, double v)
+{
+    int prec = sp->prec < 0 ? 6 : sp->prec;
+    if (prec > 9)
+        return -1;
+
+    uint64_t bits;
+    memcpy(&bits, &v, 8);
+    int neg = (int)(bits >> 63);
+    int be = (int)((bits >> 52) & 0x7ff);
+    uint64_t mant = bits & ((1ull << 52) - 1);
+    int e;
+    if (!be) {
+        e = -1074;
+    } else {
+        mant |= 1ull << 52;
+        e = be - 1023 - 52;
+    }
+
+    uint64_t q;
+    if (!mant) {
+        q = 0;
+    } else if (e >= 0) {
+        if (e > 20 || mant > (UINT64_MAX >> e))
+            return -1;
+        uint64_t iv = mant << e;
+        if (iv > UINT64_MAX / pow10_u64[prec])
+            return -1;
+        q = iv * pow10_u64[prec];
+    } else {
+        int k = -e;
+        __uint128_t num = (__uint128_t)mant * pow10_u64[prec];
+        if (k >= 128) {
+            q = 0; /* value is far below half of the last digit */
+        } else {
+            if (k < 64 && (num >> k) > UINT64_MAX)
+                return -1;
+            q = (uint64_t)(num >> k);
+            __uint128_t rem = num & (((__uint128_t)1 << k) - 1);
+            __uint128_t half = (__uint128_t)1 << (k - 1);
+            if (rem > half || (rem == half && (q & 1))) {
+                if (q == UINT64_MAX)
+                    return -1;
+                q++;
+            }
+        }
+    }
+
+    char tmp[48];
+    char *end = tmp + sizeof tmp, *w = end;
+    uint64_t divisor = pow10_u64[prec];
+    uint64_t ip = q / divisor, fp = q % divisor;
+    for (int i = 0; i < prec; i++) {
+        *--w = (char)('0' + fp % 10);
+        fp /= 10;
+    }
+    if (prec > 0 || sp->alt)
+        *--w = '.';
+    do {
+        *--w = (char)('0' + ip % 10);
+        ip /= 10;
+    } while (ip);
+    if (neg)
+        *--w = '-';
+    else if (sp->plus)
+        *--w = '+';
+    else if (sp->space)
+        *--w = ' ';
+    size_t n = (size_t)(end - w);
+    if (n > cap)
+        return -1;
+    memcpy(body, w, n);
+    return (int)n;
+}
+
 static void fmt_float(sbuf *b, const struct spec *sp, double v, int conv, int legacy)
 {
     if (isnan(v) || isinf(v)) {
@@ -222,6 +338,16 @@ static void fmt_float(sbuf *b, const struct spec *sp, double v, int conv, int le
         return;
     }
 
+    if (conv == 'f' || conv == 'F') {
+        char fixed[48];
+        int n = fmt_float_fixed(fixed, sizeof fixed, sp, v);
+        if (n >= 0) {
+            size_t plen = (fixed[0] == '-' || fixed[0] == '+' || fixed[0] == ' ') ? 1 : 0;
+            emit(b, sp, fixed, plen, fixed + plen, (size_t)n - plen, 1);
+            return;
+        }
+    }
+
     char f[32];
     size_t k = 0;
     f[k++] = '%';
@@ -231,22 +357,40 @@ static void fmt_float(sbuf *b, const struct spec *sp, double v, int conv, int le
         f[k++] = ' ';
     if (sp->alt)
         f[k++] = '#';
-    if (sp->prec >= 0)
-        k += (size_t)snprintf(f + k, sizeof f - k, ".%d", sp->prec);
+    if (sp->prec >= 0) {
+        char d[12];
+        size_t nd = 0;
+        unsigned p = (unsigned)sp->prec;
+        do {
+            d[nd++] = (char)('0' + p % 10);
+            p /= 10;
+        } while (p);
+        f[k++] = '.';
+        while (nd)
+            f[k++] = d[--nd];
+    }
     f[k++] = (char)conv;
     f[k] = 0;
 
-    int need = snprintf(NULL, 0, f, v);
-    if (need < 0)
-        return;
-    char *body = malloc((size_t)need + 2); /* room for the extra exponent digit */
-    if (!body) {
+    char stack[512];
+    int need = snprintf(stack, sizeof stack, f, v);
+    if (need < 0) {
         b->oom = 1;
         return;
     }
-    snprintf(body, (size_t)need + 1, f, v);
+    /* the legacy exponent fixup below inserts one more digit */
+    int fixup = legacy && (conv == 'e' || conv == 'E' || conv == 'g' || conv == 'G');
+    char *body = stack;
+    if ((size_t)need + (fixup ? 2 : 1) > sizeof stack) {
+        body = malloc((size_t)need + 2);
+        if (!body) {
+            b->oom = 1;
+            return;
+        }
+        snprintf(body, (size_t)need + 1, f, v);
+    }
 
-    if (legacy && (conv == 'e' || conv == 'E' || conv == 'g' || conv == 'G')) {
+    if (fixup) {
         char *e = strpbrk(body, "eE");
         if (e && (e[1] == '+' || e[1] == '-') && isdigit((unsigned char)e[2]) && isdigit((unsigned char)e[3]) &&
             !isdigit((unsigned char)e[4])) {
@@ -257,7 +401,8 @@ static void fmt_float(sbuf *b, const struct spec *sp, double v, int conv, int le
 
     size_t plen = (body[0] == '-' || body[0] == '+' || body[0] == ' ') ? 1 : 0;
     emit(b, sp, body, plen, body + plen, strlen(body + plen), 1);
-    free(body);
+    if (body != stack)
+        free(body);
 }
 
 static void fmt_narrow(sbuf *b, const struct spec *sp, const char *s)
@@ -297,27 +442,27 @@ static void fmt_wchar(sbuf *b, const struct spec *sp, WCHAR wc)
 
 /* ---- the engine ---------------------------------------------------------- */
 
-/* Renders fmt with the arguments at *ap. Returns a nul-terminated heap buffer (length in
- * *out_len, the caller frees it) or NULL with *out_len == (size_t)-1 on failure. */
-char *aw_format_alloc(const char *f, char *ap, int legacy, size_t *out_len)
+/* Renders fmt with the arguments at *ap into b. Returns b->p nul-terminated (length in
+ * *out_len), or NULL with *out_len == (size_t)-1 on failure. Any heap block allocated
+ * while formatting is kept and must be freed by the caller (b->heap). */
+static char *format_engine(const char *f, char *ap, int legacy, sbuf *b, size_t *out_len)
 {
-    sbuf b = {0};
     if (!f) {
         *out_len = (size_t)-1;
         return NULL;
     }
 
-    while (*f && !b.oom) {
+    while (*f && !b->oom) {
         if (*f != '%') {
             const char *s = f;
             while (*f && *f != '%')
                 f++;
-            sb_put(&b, s, (size_t)(f - s));
+            sb_put(b, s, (size_t)(f - s));
             continue;
         }
         const char *start = f++;
         if (*f == '%') {
-            sb_put(&b, "%", 1);
+            sb_put(b, "%", 1);
             f++;
             continue;
         }
@@ -416,51 +561,51 @@ char *aw_format_alloc(const char *f, char *ap, int legacy, size_t *out_len)
         switch (conv) {
         case 'd':
         case 'i':
-            fmt_int(&b, &sp, slot_u64(&ap), 1, conv);
+            fmt_int(b, &sp, slot_u64(&ap), 1, conv);
             break;
         case 'u':
         case 'o':
         case 'x':
         case 'X':
-            fmt_int(&b, &sp, slot_u64(&ap), 0, conv);
+            fmt_int(b, &sp, slot_u64(&ap), 0, conv);
             break;
         case 'p':
             sp.prec = 16;
             sp.zero = 0;
-            fmt_int(&b, &sp, slot_u64(&ap), 0, 'p');
+            fmt_int(b, &sp, slot_u64(&ap), 0, 'p');
             break;
         case 'c':
             if (sp.wide) {
                 WCHAR wc = (WCHAR)slot_u64(&ap);
-                fmt_wchar(&b, &sp, wc);
+                fmt_wchar(b, &sp, wc);
             } else {
                 char c = (char)slot_u64(&ap);
-                emit(&b, &sp, "", 0, &c, 1, 0);
+                emit(b, &sp, "", 0, &c, 1, 0);
             }
             break;
         case 'C':
-            fmt_wchar(&b, &sp, (WCHAR)slot_u64(&ap));
+            fmt_wchar(b, &sp, (WCHAR)slot_u64(&ap));
             break;
         case 's':
             if (sp.wide && !sp.narrow)
-                fmt_wide(&b, &sp, (const WCHAR *)(uintptr_t)slot_u64(&ap));
+                fmt_wide(b, &sp, (const WCHAR *)(uintptr_t)slot_u64(&ap));
             else
-                fmt_narrow(&b, &sp, (const char *)(uintptr_t)slot_u64(&ap));
+                fmt_narrow(b, &sp, (const char *)(uintptr_t)slot_u64(&ap));
             break;
         case 'S':
-            fmt_wide(&b, &sp, (const WCHAR *)(uintptr_t)slot_u64(&ap));
+            fmt_wide(b, &sp, (const WCHAR *)(uintptr_t)slot_u64(&ap));
             break;
         case 'Z':
-            fmt_narrow(&b, &sp, (const char *)(uintptr_t)slot_u64(&ap));
+            fmt_narrow(b, &sp, (const char *)(uintptr_t)slot_u64(&ap));
             break;
         case 'n': {
             void *p = (void *)(uintptr_t)slot_u64(&ap);
             if (p) {
                 if (sp.bits == 64) {
-                    int64_t v = (int64_t)b.n;
+                    int64_t v = (int64_t)b->n;
                     memcpy(p, &v, 8);
                 } else {
-                    int32_t v = (int32_t)b.n;
+                    int32_t v = (int32_t)b->n;
                     memcpy(p, &v, 4);
                 }
             }
@@ -474,30 +619,57 @@ char *aw_format_alloc(const char *f, char *ap, int legacy, size_t *out_len)
         case 'G':
         case 'a':
         case 'A':
-            fmt_float(&b, &sp, slot_f64(&ap), conv, legacy);
+            fmt_float(b, &sp, slot_f64(&ap), conv, legacy);
             break;
         default:
             /* unknown conversion: copied through unchanged */
-            sb_put(&b, start, (size_t)(f - start));
+            sb_put(b, start, (size_t)(f - start));
             break;
         }
     }
 
-    if (b.oom) {
-        free(b.p);
+    if (b->oom) {
+        free(b->heap);
+        b->heap = b->p = NULL;
         *out_len = (size_t)-1;
         return NULL;
     }
-    if (!b.p) {
-        b.p = malloc(1);
-        if (!b.p) {
+    sb_reserve(b, 0); /* terminating nul */
+    if (b->oom) {
+        free(b->heap);
+        b->heap = b->p = NULL;
+        *out_len = (size_t)-1;
+        return NULL;
+    }
+    if (!b->p) {
+        b->p = b->heap = malloc(1);
+        if (!b->p) {
             *out_len = (size_t)-1;
             return NULL;
         }
     }
-    b.p[b.n] = 0;
-    *out_len = b.n;
-    return b.p;
+    b->p[b->n] = 0;
+    *out_len = b->n;
+    return b->p;
+}
+
+/* Formats using scratch when the result fits there, otherwise a heap block. *heap_used says
+ * whether the returned pointer must be freed. */
+char *aw_format_tmp(const char *f, char *ap, int legacy, char *scratch, size_t cap, size_t *out_len,
+                    int *heap_used)
+{
+    sbuf b;
+    sb_init(&b, scratch, cap);
+    char *r = format_engine(f, ap, legacy, &b, out_len);
+    *heap_used = b.heap != NULL;
+    return r;
+}
+
+/* Formats into a heap buffer that the caller frees. */
+char *aw_format_alloc(const char *f, char *ap, int legacy, size_t *out_len)
+{
+    int heap;
+    return aw_format_tmp(f, ap, legacy, NULL, 0, out_len, &heap);
 }
 
 /* Copies a formatted result into a caller buffer of cap bytes (nul-terminated when cap > 0).
@@ -523,15 +695,39 @@ static int store_bounded(char *buf, size_t cap, const char *s, size_t n, int c99
 
 /* ---- exports ------------------------------------------------------------ */
 
-API(msvcrt, int, vsprintf, (char *buf, const char *fmt, char *ap))
+/* Formats into a caller buffer of cap bytes; large results spill to the heap. */
+static int format_bounded(char *buf, size_t cap, const char *fmt, char *ap, int legacy, int c99)
 {
+    char scratch[256];
     size_t n;
-    char *s = aw_format_alloc(fmt, ap, 1, &n);
+    int heap;
+    char *s = aw_format_tmp(fmt, ap, legacy, scratch, sizeof scratch, &n, &heap);
+    if (!s)
+        return -1;
+    int r = store_bounded(buf, cap, s, n, c99);
+    if (heap)
+        free(s);
+    return r;
+}
+
+/* Copies an unbounded result into buf (no capacity is known for the destination). */
+static int format_unbounded(char *buf, const char *fmt, char *ap, int legacy)
+{
+    char scratch[256];
+    size_t n;
+    int heap;
+    char *s = aw_format_tmp(fmt, ap, legacy, scratch, sizeof scratch, &n, &heap);
     if (!s)
         return -1;
     memcpy(buf, s, n + 1);
-    free(s);
+    if (heap)
+        free(s);
     return (int)n;
+}
+
+API(msvcrt, int, vsprintf, (char *buf, const char *fmt, char *ap))
+{
+    return format_unbounded(buf, fmt, ap, 1);
 }
 
 API(msvcrt, int, sprintf, (char *buf, const char *fmt, ...))
@@ -545,24 +741,12 @@ API(msvcrt, int, sprintf, (char *buf, const char *fmt, ...))
 
 API(msvcrt, int, vsnprintf, (char *buf, size_t cap, const char *fmt, char *ap))
 {
-    size_t n;
-    char *s = aw_format_alloc(fmt, ap, 1, &n);
-    if (!s)
-        return -1;
-    int r = store_bounded(buf, cap, s, n, 1);
-    free(s);
-    return r;
+    return format_bounded(buf, cap, fmt, ap, 1, 1);
 }
 
 API(msvcrt, int, _vsnprintf, (char *buf, size_t cap, const char *fmt, char *ap))
 {
-    size_t n;
-    char *s = aw_format_alloc(fmt, ap, 1, &n);
-    if (!s)
-        return -1;
-    int r = store_bounded(buf, cap, s, n, 0);
-    free(s);
-    return r;
+    return format_bounded(buf, cap, fmt, ap, 1, 0);
 }
 
 API(msvcrt, int, snprintf, (char *buf, size_t cap, const char *fmt, ...))
@@ -589,18 +773,10 @@ API(msvcrt, int, __stdio_common_vsprintf, (uint64_t options, char *buf, size_t c
                                            char *ap))
 {
     (void)locale;
-    size_t n;
-    char *s = aw_format_alloc(fmt, ap, (options & 0x18) != 0, &n);
-    if (!s)
-        return -1;
-    if (count == (size_t)-1) {
-        memcpy(buf, s, n + 1);
-        free(s);
-        return (int)n;
-    }
-    int r = store_bounded(buf, count, s, n, 1);
-    free(s);
-    return r;
+    int legacy = (options & 0x18) != 0;
+    if (count == (size_t)-1)
+        return format_unbounded(buf, fmt, ap, legacy);
+    return format_bounded(buf, count, fmt, ap, legacy, 1);
 }
 
 /* ucrt: __stdio_common_vsnprintf_s(options, buffer, size, max_count, format, locale, va_list).
@@ -610,13 +786,16 @@ API(msvcrt, int, __stdio_common_vsnprintf_s, (uint64_t options, char *buf, size_
                                               const char *fmt, void *locale, char *ap))
 {
     (void)locale;
+    char scratch[256];
     size_t n;
-    char *s = aw_format_alloc(fmt, ap, (options & 0x18) != 0, &n);
+    int heap;
+    char *s = aw_format_tmp(fmt, ap, (options & 0x18) != 0, scratch, sizeof scratch, &n, &heap);
     if (!s)
         return -1;
     int r = -1;
     if (!buf || !size) {
-        free(s);
+        if (heap)
+            free(s);
         return -1;
     }
     size_t lim = size - 1;
@@ -627,6 +806,7 @@ API(msvcrt, int, __stdio_common_vsnprintf_s, (uint64_t options, char *buf, size_
     buf[k] = 0;
     if (n <= lim || (options & 0x2))
         r = (int)n;
-    free(s);
+    if (heap)
+        free(s);
     return r;
 }

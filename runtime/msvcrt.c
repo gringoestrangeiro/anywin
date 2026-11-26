@@ -16,10 +16,12 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <immintrin.h>
 
 extern void WINAPI __aw_kernel32_ExitProcess(UINT code);
 extern LPSTR WINAPI __aw_kernel32_GetCommandLineA(void);
-extern char *aw_format_alloc(const char *fmt, char *ap, int legacy_exp, size_t *out_len);
+extern char *aw_format_tmp(const char *fmt, char *ap, int legacy_exp, char *scratch, size_t cap, size_t *out_len,
+                           int *heap_used);
 
 #define IOB (__aw_msvcrt__iob)
 #define AW_IOFBF 0
@@ -510,15 +512,18 @@ static int file_fmt(aw_file *f, const char *fmt, char *ap, int legacy_exp)
 {
     FILE *g = gf(f);
     size_t n;
+    int heap;
     if (!g)
         return -1;
-    char *s = aw_format_alloc(fmt, ap, legacy_exp, &n);
+    char scratch[256];
+    char *s = aw_format_tmp(fmt, ap, legacy_exp, scratch, sizeof scratch, &n, &heap);
     if (!s)
         return -1;
     int r = -1;
     if (fwrite(s, 1, n, g) == n)
         r = (int)n;
-    free(s);
+    if (heap)
+        free(s);
     return r;
 }
 
@@ -769,8 +774,43 @@ API(msvcrt, void, free, (void *p))
 
 /* ---- memory and strings ------------------------------------------------- */
 
+/* Glibc's generic memcpy variant is slow for mid-size copies (roughly 0.5-2 MiB here): its
+ * ifunc variant is tuned for other sizes. A short AVX2 loop is up to twice as fast in that
+ * range; outside it glibc wins, so only take over there. */
+#define MEMCPY_AVX2_MIN (512u << 10)
+#define MEMCPY_AVX2_MAX (2u << 20)
+
+__attribute__((target("avx2"))) static void *memcpy_avx2(void *d, const void *s, size_t n)
+{
+    char *dd = d;
+    const char *ss = s;
+    size_t head = (32 - ((uintptr_t)dd & 31)) & 31;
+    if (head > n)
+        head = n;
+    for (size_t i = 0; i < head; i++)
+        dd[i] = ss[i];
+    size_t i = head;
+    for (; i + 32 <= n; i += 32)
+        _mm256_store_si256((__m256i *)(dd + i), _mm256_loadu_si256((const __m256i *)(ss + i)));
+    for (; i < n; i++)
+        dd[i] = ss[i];
+    return d;
+}
+
+static int have_avx2(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        __builtin_cpu_init();
+        cached = __builtin_cpu_supports("avx2") ? 1 : 0;
+    }
+    return cached;
+}
+
 API(msvcrt, void *, memcpy, (void *d, const void *s, size_t n))
 {
+    if (n >= MEMCPY_AVX2_MIN && n <= MEMCPY_AVX2_MAX && have_avx2())
+        return memcpy_avx2(d, s, n);
     return memcpy(d, s, n);
 }
 
