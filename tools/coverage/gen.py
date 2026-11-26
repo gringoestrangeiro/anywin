@@ -347,6 +347,25 @@ def pct_colour(p):
     return "#4c1" if p >= 90 else "#97ca00" if p >= 70 else "#dfb317" if p >= 40 else "#fe7d37"
 
 
+def update_readme(summary):
+    path = ROOT / "README.md"
+    text = path.read_text(encoding="utf-8")
+    block = (
+        "<!-- coverage-text:start -->\n"
+        f"**Windows APIs implemented: {summary['win32_coverage']['implemented']:,} / "
+        f"{summary['win32_coverage']['total']:,} ({summary['win32_coverage']['pct']:.2f}%).** "
+        f"Started modules: {summary['started_modules']['implemented']:,} / "
+        f"{summary['started_modules']['total']:,} ({summary['started_modules']['pct']:.2f}%). "
+        f"Sample-program imports: {summary['sample_imports']['covered']:,} / "
+        f"{summary['sample_imports']['total']:,} ({summary['sample_imports']['pct']:.2f}%). "
+        f"Runtime exports: {summary['runtime']['exports']:,}.\n"
+        "<!-- coverage-text:end -->"
+    )
+    new = re.sub(r"<!-- coverage-text:start -->.*?<!-- coverage-text:end -->", block, text, flags=re.S)
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+
+
 def main():
     exports = runtime_exports()
     inventory_source, inventory = load_inventory()
@@ -453,6 +472,7 @@ def main():
         "missing_imports": [{"module": m, "function": n} for m, n in missing],
     }
     (HERE / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
+    update_readme(summary)
 
     lines = [
         "# Windows API coverage",

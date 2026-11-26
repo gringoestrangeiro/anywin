@@ -17,6 +17,10 @@ No Wine, no PE loader at runtime, no compatibility layer at runtime.
 
 [![coverage map](docs/img/progress.svg)](docs/COVERAGE.md)
 
+<!-- coverage-text:start -->
+**Windows APIs implemented: 461 / 18,319 (2.52%).** Started modules: 461 / 3,837 (12.01%). Sample-program imports: 188 / 188 (100.00%). Runtime exports: 561.
+<!-- coverage-text:end -->
+
 <sub>One square per item, in the style of the AnyPS5 progress map. The denominator is Microsoft's
 Win32 metadata (`Microsoft.Windows.SDK.Win32Metadata`, 18,319 P/Invoke entry points across 368
 DLLs), not our own export table: green is implemented in anywin, grey is known but not implemented.
