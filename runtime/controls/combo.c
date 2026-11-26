@@ -63,6 +63,8 @@ typedef struct {
     int orig_sel;      /* selection when the list opened (restored on cancel) */
     int item_h;        /* 0 = font height + 2 */
     int drop_w;        /* 0 = combo width */
+    int drop_h;        /* requested height: the dropped list's height (0 = none); the window itself is
+                        * only as tall as the closed face, as on Windows */
     int min_visible;
     int ext_ui, hext;
     int focused;
@@ -79,9 +81,29 @@ static const WCHAR cb_cls_edit[] = {'E', 'd', 'i', 't', 0};
 
 /* ------------------------------------------------------------------ geometry */
 
+typedef struct {
+    HWND hwnd;
+    HWND hwndInsertAfter;
+    int x, y, cx, cy;
+    UINT flags;
+} cb_windowpos;
+
 static int cb_closed_h(HWND hwnd)
 {
     return ctl_font_height(hwnd) + 8;
+}
+
+/* the window follows its closed face when the font changes (the face height depends on the font) */
+static void cb_refit(HWND hwnd, const cb_t *c)
+{
+    RECT wr;
+    int closed = cb_closed_h(hwnd);
+    if (c->kind == CBS_SIMPLE)
+        return;
+    __aw_user32_GetWindowRect(hwnd, &wr);
+    if (wr.bottom - wr.top != closed)
+        __aw_user32_SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left, closed,
+                                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 static int cb_itemh(HWND hwnd, const cb_t *c)
@@ -108,14 +130,13 @@ static void cb_geom(HWND hwnd, const cb_t *c, RECT *scr, int *rows_out)
 {
     RECT cr;
     POINT org;
-    int closed = cb_closed_h(hwnd), ih = cb_itemh(hwnd, c), ch, cw, rows, lh, lw, sh;
+    int closed = cb_closed_h(hwnd), ih = cb_itemh(hwnd, c), cw, rows, lh, lw, sh;
 
     __aw_user32_GetClientRect(hwnd, &cr);
     cw = cr.right - cr.left;
-    ch = cr.bottom - cr.top;
     rows = c->count < c->min_visible ? c->count : c->min_visible;
-    if (ch > closed) { /* the combo's own height is the dropped height */
-        int fit = (ch - closed) / ih;
+    if (c->drop_h > closed) { /* the requested height is the dropped height */
+        int fit = (c->drop_h - closed) / ih;
         if (fit >= 1)
             rows = c->count < fit ? c->count : fit;
     }
@@ -437,7 +458,7 @@ static void cb_paint(HWND hwnd, cb_t *c)
     int closed = cb_closed_h(hwnd);
     int enabled = __aw_user32_IsWindowEnabled(hwnd);
 
-    /* only the closed face is painted: the rest of a dropped-height window stays transparent */
+    /* the window is the closed face; the dropped list is a separate popup (see cb_geom) */
     if (!ctl_begin_nofill(hwnd, WM_CTLCOLORLISTBOX, &hdc, &ps, &rc, &bg))
         return;
     box = rc;
@@ -744,6 +765,15 @@ static LRESULT cb_msg(HWND hwnd, cb_t *c, UINT msg, WPARAM wp, LPARAM lp, int *h
         return 0;
     case WM_ERASEBKGND:
         return 1;
+    case WM_WINDOWPOSCHANGING: {
+        cb_windowpos *pos = (cb_windowpos *)lp; /* WINDOWPOS layout (not in ctl.h) */
+        if (c->kind != CBS_SIMPLE && pos && !(pos->flags & SWP_NOSIZE)) {
+            if (pos->cy > cb_closed_h(hwnd))
+                c->drop_h = pos->cy;
+            pos->cy = cb_closed_h(hwnd);
+        }
+        return 0;
+    }
     case WM_SIZE:
         cb_layout(hwnd, c);
         __aw_user32_InvalidateRect(hwnd, NULL, TRUE);
@@ -889,7 +919,7 @@ LRESULT WINAPI aw_combo_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         /* the scroll bars of a combo belong to its drop list: the combo window itself shows none */
         if (style & (WS_VSCROLL | WS_HSCROLL))
             __aw_user32_SetWindowLongW(hwnd, GWL_STYLE, (LONG)(style & ~(WS_VSCROLL | WS_HSCROLL)));
-        /* the closed face draws its own frame; a client edge would frame the whole dropped height */
+        /* the closed face draws its own frame; a client edge would frame the drop list's rows too */
         {
             LONG ex = __aw_user32_GetWindowLongW(hwnd, GWL_EXSTYLE);
             if (ex & WS_EX_CLIENTEDGE)
@@ -906,6 +936,16 @@ LRESULT WINAPI aw_combo_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 __aw_user32_SendMessageW(c->edit, CB_MSG_SETCOMBO, 0, 0);
         }
         cb_layout(hwnd, c);
+        if (c->kind != CBS_SIMPLE) {
+            RECT wr;
+            int closed = cb_closed_h(hwnd);
+            __aw_user32_GetWindowRect(hwnd, &wr);
+            if (wr.bottom - wr.top > closed) {
+                c->drop_h = wr.bottom - wr.top;
+                __aw_user32_SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left, closed,
+                                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
         return 0;
     }
     if (msg == WM_NCDESTROY) {
@@ -921,8 +961,11 @@ LRESULT WINAPI aw_combo_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
     if (msg == WM_SETFONT && c->edit)
         __aw_user32_SendMessageW(c->edit, WM_SETFONT, wp, 1);
-    if (ctl_common_msg(hwnd, msg, wp, lp, &res))
+    if (ctl_common_msg(hwnd, msg, wp, lp, &res)) {
+        if (msg == WM_SETFONT)
+            cb_refit(hwnd, c);
         return res;
+    }
 
     res = cb_msg(hwnd, c, msg, wp, lp, &handled);
     if (handled)

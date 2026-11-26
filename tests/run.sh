@@ -57,6 +57,7 @@ run core_postq     --tool Xvfb -- "$root/tests/core_postq.sh" "$build"
 run core_wsize     --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_wsize.sh" "$build"
 run core_radio    --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_radio.sh" "$build"
 run core_zorder   --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_zorder.sh" "$build"
+run core_combo    --tool x86_64-w64-mingw32-gcc -- "$root/tests/core_combo.sh" "$build"
 
 echo "---- pass=$pass fail=$fail skip=$skip"
 [ $fail -eq 0 ]
