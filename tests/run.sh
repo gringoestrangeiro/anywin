@@ -46,6 +46,7 @@ run hello_console    --tool x86_64-w64-mingw32-gcc -- "$root/tests/hello_console
 run hello_gui        --tool Xvfb -- "$root/tests/hello_gui.sh" "$build"
 run todo_smoke       --tool Xvfb -- "$root/tests/todo_smoke.sh" "$build"
 run todo_p0          --tool Xvfb -- "$root/tests/todo_p0.sh" "$build"
+run winsock          --tool x86_64-w64-mingw32-gcc -- "$root/tests/winsock.sh" "$build"
 
 echo "---- pass=$pass fail=$fail skip=$skip"
 [ $fail -eq 0 ]

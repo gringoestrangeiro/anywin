@@ -1,6 +1,7 @@
 /* ws2_32: Winsock 2 on top of Linux sockets.  Windows structure layouts are
  * preserved exactly; SOCKET values are the Linux file descriptors. */
 #include "aw.h"
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -184,16 +185,22 @@ static int wsa_refcount;
 
 API(ws2_32, int, WSAStartup, (WORD version, WSADATA *data))
 {
+    int major = version & 0xff, minor = version >> 8;
     if (!data)
         return WSAEFAULT;
-    if ((version & 0xff) < 1 || (version >> 8) > 2)
+    if (!major)
         return WSAVERNOTSUPPORTED;
     memset(data, 0, sizeof *data);
-    data->wVersion = 0x0202;
+    if (major > 2 || (major == 2 && minor > 2))
+        data->wVersion = 0x0202;
+    else if (major == 1 && minor > 1)
+        data->wVersion = 0x0101;
+    else
+        data->wVersion = version;
     data->wHighVersion = 0x0202;
     snprintf(data->szDescription, sizeof data->szDescription, "anywin Winsock 2.2");
-    data->iMaxSockets = 0;
-    data->iMaxUdpDg = 1472;
+    data->iMaxSockets = major == 1 ? 32767 : 0;
+    data->iMaxUdpDg = major == 1 ? 65467 : 1472;
     wsa_refcount++;
     set_wsa(0);
     return 0;
@@ -201,8 +208,11 @@ API(ws2_32, int, WSAStartup, (WORD version, WSADATA *data))
 
 API(ws2_32, int, WSACleanup, (void))
 {
-    if (wsa_refcount > 0)
-        wsa_refcount--;
+    if (!wsa_refcount) {
+        set_wsa(WSANOTINITIALISED);
+        return SOCKET_ERROR;
+    }
+    wsa_refcount--;
     return 0;
 }
 
@@ -227,8 +237,6 @@ API(ws2_32, SOCKET, socket, (int af, int type, int protocol))
 
 API(ws2_32, int, closesocket, (SOCKET s))
 {
-    extern void aw_wsa_forget_socket(SOCKET);
-    aw_wsa_forget_socket(s);
     if (close((int)s) < 0) {
         set_wsa(errno_to_wsa(errno));
         return SOCKET_ERROR;
@@ -449,7 +457,7 @@ API(ws2_32, int, __WSAFDIsSet, (SOCKET s, const win_fd_set *set))
 }
 
 /* ---- ioctl -------------------------------------------------------------- */
-API(ws2_32, int, ioctlsocket, (SOCKET s, int32_t cmd, unsigned long *argp))
+API(ws2_32, int, ioctlsocket, (SOCKET s, int32_t cmd, uint32_t *argp))
 {
     if (!argp) {
         set_wsa(WSAEFAULT);
@@ -474,7 +482,7 @@ API(ws2_32, int, ioctlsocket, (SOCKET s, int32_t cmd, unsigned long *argp))
             set_wsa(errno_to_wsa(errno));
             return SOCKET_ERROR;
         }
-        *argp = (unsigned long)n;
+        *argp = (uint32_t)n;
         return 0;
     }
     set_wsa(WSAEINVAL);

@@ -1,7 +1,7 @@
 # Runtime sources compiled into build/libanywin.o (Stage 1 scope).
 # One path per line, relative to the repo root; '#' starts a comment.
 # Later packages append their new .c files here. Missing paths are ignored by the Makefile.
-# Deferred files (runtime/ws2_32.c, Stage 2) stay on disk and are NOT listed.
+# Deferred files stay on disk and are NOT listed.
 runtime/start.c
 runtime/util.c
 runtime/sync.c
@@ -38,3 +38,4 @@ runtime/user32_scroll.c
 runtime/advapi32.c
 runtime/shell32.c
 runtime/seh.c
+runtime/ws2_32.c

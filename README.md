@@ -41,11 +41,12 @@ desktop); the relinked program is an ordinary X11 client.
 | Menus / dialogs | `menu.c`, `menu_popup.c`, `msgbox.c` | popup menus, `TrackPopupMenu`, `MessageBox` |
 | Controls | `controls/*.c` | Button, Static, Edit, ComboBox, SysListView32, SysHeader32 |
 | advapi32 | `advapi32.c` | file-backed registry under `~/.anywin/registry/`; Run-key values also write `~/.config/autostart/*.desktop` |
+| ws2_32 | `ws2_32.c` | Winsock 2 over Linux sockets: startup, TCP/UDP, `select`, sockopts, name resolution, address conversion |
 | shell32 | `shell32.c` | `Shell_NotifyIcon` over the X11 system tray |
 | SEH | `seh.c` | `__C_specific_handler`, unwind lookup, unhandled-exception filter, crash report with RIP/RVA |
 
-`runtime/SCOPED_SRCS` lists the files that are built. Deferred files such as `ws2_32.c` stay on
-disk but are not compiled.
+`runtime/SCOPED_SRCS` lists the files that are built; deferred files stay on disk but are not
+compiled.
 
 ## Results on `todo.exe`
 
@@ -62,7 +63,8 @@ Not done or not tested yet:
 * Second-instance detection (the named mutex and `FindWindow` are per-process).
 * Tray clicks end to end (Xvfb has no tray manager).
 * ListView type-ahead, rubber-band selection, column drag reorder; multiline Edit; undo.
-* DIB sections, `BitBlt` from bitmaps, palettes, paths, C++ exceptions, networking, COM.
+* DIB sections, `BitBlt` from bitmaps, palettes, paths, C++ exceptions, COM.
+* Advanced Winsock (overlapped I/O, `WSAAsyncSelect`, `WSAPoll`, raw sockets).
 
 ## Benchmark: anywin vs Wine 11.11 (Staging)
 
@@ -151,7 +153,7 @@ make test      # tests/run.sh: hooks, imports, hello_console, hello_gui, todo sm
 
 Package tests (run individually): `core_env`, `core_stdio`, `core_gui`, `core_gui_controls`,
 `core_menu`, `core_scroll`, `core_registry`, `core_seh`, `core_tray`, `gdi_render`,
-`region_unit`, `listview_unit`, `x11_font`. `tests/bench.py` is the Wine comparison, not part of `make test`. Tests that open windows always use `xvfb-run`.
+`region_unit`, `listview_unit`, `x11_font`, `winsock`. `tests/bench.py` is the Wine comparison, not part of `make test`. Tests that open windows always use `xvfb-run`.
 
 ## Known issues
 
