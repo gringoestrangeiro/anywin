@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
+#include <strings.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -21,11 +22,14 @@ extern const struct aw_export __start_aw_exports[], __stop_aw_exports[];
 
 char aw_exe_unix[4096];
 char aw_exe_win[4096];
+char aw_curdir_win[4096];
 
 static WCHAR *cmdline_w;
 static char *cmdline_a;
 static WCHAR *env_block_w;
-static void *image_base_ptr;
+static HANDLE std_handles[3];
+static void *unhandled_filter;
+static char process_heap_marker[16]; /* identity of the process heap handle */
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
@@ -45,10 +49,12 @@ static size_t quote_arg(char *out, size_t cap, const char *s)
 {
     size_t n = 0;
     int quote = !*s || strpbrk(s, " \t\n\v\"") != NULL;
+/* the argument is always evaluated: the sizing pass (out == NULL) must advance s too */
 #define PUT(c)                                                                                             \
     do {                                                                                                   \
+        char put_c_ = (c);                                                                                 \
         if (out && n < cap)                                                                                \
-            out[n] = (c);                                                                                  \
+            out[n] = put_c_;                                                                               \
         n++;                                                                                               \
     } while (0)
     if (!quote) {
@@ -210,7 +216,11 @@ void aw_init_environment(void)
     env_default("NUMBER_OF_PROCESSORS", buf);
     env_default("PATHEXT", ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC");
     env_default("ComSpec", "C:\\windows\\system32\\cmd.exe");
-    env_default_path("PROGRAMDATA", "/var/lib");
+}
+
+static int cmp_env_entry(const void *a, const void *b)
+{
+    return strcasecmp(*(char *const *)a, *(char *const *)b);
 }
 
 /* Build a Windows environment block (UTF-16, double nul terminated). */
@@ -224,8 +234,7 @@ static WCHAR *make_env_block(void)
     for (char **e = environ; e && *e; e++)
         if (strchr(*e, '=') && (*e)[0] != '=')
             list[n++] = *e;
-    int cmp(const void *a, const void *b);
-    qsort(list, n, sizeof(char *), (int (*)(const void *, const void *))strcasecmp);
+    qsort(list, n, sizeof(char *), cmp_env_entry);
     size_t wlen = 0;
     for (size_t i = 0; i < n; i++) {
         WCHAR *w = aw_u2w(list[i], -1);
@@ -288,16 +297,25 @@ static void ustring_set(USTRING *u, const WCHAR *s, int maxchars)
     u->MaxLength = (uint16_t)(maxchars * sizeof(WCHAR));
 }
 
-/* standard handles are owned by file.c */
 HANDLE aw_std_handle(int which)
 {
-    static HANDLE dummy[3];
-    extern HANDLE *aw_std_handle_slot(int which);
-    HANDLE *s = aw_std_handle_slot(which);
-    return s ? *s : dummy[which];
+    return which >= 0 && which < 3 ? std_handles[which] : NULL;
 }
 
-void *aw_get_image_base(void) { return __aw_image_base; }
+void *aw_process_heap(void) { return process_heap_marker; }
+void *aw_unhandled_filter(void) { return unhandled_filter; }
+
+/* stdin/stdout/stderr as H_FILE handles on fds 0..2 (console flag when a tty) */
+static void std_handles_init(void)
+{
+    for (int fd = 0; fd < 3; fd++) {
+        aw_object *o = aw_object_new(H_FILE);
+        aw_obj_set_fd(o, fd);
+        *aw_obj_console(o) = isatty(fd) ? 1 : 0;
+        *aw_obj_inherit(o) = 1;
+        std_handles[fd] = aw_handle_alloc(H_FILE, o);
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* exports: process / command line / startup info                       */
@@ -313,23 +331,10 @@ API(kernel32, void, ExitProcess, (UINT code))
 }
 API(kernel32, BOOL, TerminateProcess, (HANDLE h, UINT code))
 {
-    if ((intptr_t)h == -1) {
-        api_exit:
-        if (aw_gui_atexit)
-            aw_gui_atexit();
-        fflush(NULL);
-        _exit((int)code);
-    }
-    extern DWORD aw_process_id(HANDLE);
-    DWORD pid = aw_process_id(h);
-    if (pid && pid != (DWORD)getpid()) {
-        kill(pid, SIGKILL);
-        extern void aw_process_mark_dead(HANDLE, DWORD);
-        aw_process_mark_dead(h, code);
-        return TRUE;
-    }
-    if (pid == (DWORD)getpid())
-        goto api_exit;
+    /* Only the current process can be named: CreateProcess is not in Stage 1, so there are no
+     * child processes and no real process handles to terminate. */
+    if ((intptr_t)h == -1)
+        __aw_kernel32_ExitProcess(code);
     aw_set_last_error(6);
     return FALSE;
 }
@@ -458,7 +463,7 @@ API(kernel32, LPWSTR, GetEnvironmentStringsW, (void))
     ensure_env_block();
     return env_block_w;
 }
-API(kernel32, LPWSTR, GetEnvironmentStrings, (void)) { return __aw_kernel32_GetEnvironmentStringsW(); }
+API(kernel32, LPSTR, GetEnvironmentStrings, (void)) { return __aw_kernel32_GetEnvironmentStringsA(); }
 API(kernel32, BOOL, FreeEnvironmentStringsA, (char *p)) { free(p); return TRUE; }
 API(kernel32, BOOL, FreeEnvironmentStringsW, (WCHAR *p))
 {
@@ -467,7 +472,7 @@ API(kernel32, BOOL, FreeEnvironmentStringsW, (WCHAR *p))
     free(p);
     return TRUE;
 }
-API(kernel32, BOOL, FreeEnvironmentStrings, (WCHAR *p)) { return __aw_kernel32_FreeEnvironmentStringsW(p); }
+API(kernel32, BOOL, FreeEnvironmentStrings, (char *p)) { return __aw_kernel32_FreeEnvironmentStringsA(p); }
 
 /* Expand %VAR% references.  Returns required length including the nul. */
 static int expand_env_w(const WCHAR *src, WCHAR *dst, int n)
@@ -844,9 +849,11 @@ static DWORD module_name(HMODULE h, char *out, DWORD n)
         snprintf(path, sizeof path, "C:\\windows\\system32\\%s.dll", fm->name);
     }
     DWORD need = (DWORD)strlen(path) + 1;
-    if (n < need) {
-        if (out && n)
-            out[0] = 0;
+    if (n < need) { /* Windows copies the truncated name and returns nSize */
+        if (out && n) {
+            memcpy(out, path, n - 1);
+            out[n - 1] = 0;
+        }
         aw_set_last_error(122);
         return n;
     }
@@ -891,44 +898,626 @@ void aw_kernel32_init(int argc, char **argv, char **envp)
     char *w = aw_win_path(aw_exe_unix);
     snprintf(aw_exe_win, sizeof aw_exe_win, "%s", w);
     free(w);
-    image_base_ptr = __aw_image_base;
+    char cwd[4096];
+    if (getcwd(cwd, sizeof cwd)) {
+        w = aw_win_path(cwd);
+        snprintf(aw_curdir_win, sizeof aw_curdir_win, "%s", w);
+        free(w);
+    } else
+        strcpy(aw_curdir_win, "Z:\\");
 
-    aw_file_init();
-    aw_console_init();
+    std_handles_init();
     aw_init_environment();
     build_command_line(argc, argv);
-    aw_std_init();
 
     ensure_env_block();
     uint8_t *peb = peb_addr();
     uint8_t *pp = NULL;
     memcpy(&pp, peb + 0x20, sizeof pp);
     if (pp) {
+        /* RTL_USER_PROCESS_PARAMETERS, x64 layout */
         *(uint32_t *)(pp + 0x00) = 0x400;
-        *(uint32_t *)(pp + 0x04) = 0x100;
+        *(uint32_t *)(pp + 0x04) = 0x400;
         *(uint32_t *)(pp + 0x08) = 0;
+        *(uint64_t *)(pp + 0x10) = 0; /* ConsoleHandle: none */
+        *(uint32_t *)(pp + 0x18) = 0; /* ConsoleFlags */
         void *h = aw_std_handle(0);
-        memcpy(pp + 0x10, &h, 8);
-        *(uint32_t *)(pp + 0x18) = 1; /* CONSOLE_HANDLE_VALID? (informational) */
-        h = aw_std_handle(0);
         memcpy(pp + 0x20, &h, 8);
         h = aw_std_handle(1);
         memcpy(pp + 0x28, &h, 8);
         h = aw_std_handle(2);
         memcpy(pp + 0x30, &h, 8);
+        /* CURDIR at 0x38 (DosPath UNICODE_STRING + Handle), DllPath at 0x50 */
         WCHAR *cw = aw_u2w(aw_curdir_win, -1);
         ustring_set((USTRING *)(pp + 0x38), cw, MAX_PATH);
         *(uint64_t *)(pp + 0x48) = 0;
         ustring_set((USTRING *)(pp + 0x50), empty_w, 0);
         WCHAR *iw = aw_u2w(aw_exe_win, -1);
         ustring_set((USTRING *)(pp + 0x60), iw, 0x1000);
-        ustring_set((USTRING *)(pp + 0x70), cmdline_w, 0x8000);
+        ustring_set((USTRING *)(pp + 0x70), cmdline_w, 0x7fff);
         *(void **)(pp + 0x80) = env_block_w;
-        *(uint32_t *)(pp + 0xa0) = 10; /* SW_SHOWDEFAULT */
+        *(uint32_t *)(pp + 0xa8) = 10; /* ShowWindowFlags = SW_SHOWDEFAULT */
     }
-    /* PEB.ProcessHeap (offset 0x30) */
-    extern HANDLE __aw_kernel32_GetProcessHeap(void);
-    void *h = __aw_kernel32_GetProcessHeap();
-    memcpy(peb + 0x30, &h, sizeof h);
+    void *heap = aw_process_heap();
+    memcpy(peb + 0x30, &heap, sizeof heap); /* PEB.ProcessHeap */
     TRACE("kernel32 init: exe=%s cmdline=%s", aw_exe_win, cmdline_a);
+}
+
+/* ------------------------------------------------------------------ */
+/* last error, time, tick counts                                        */
+/* ------------------------------------------------------------------ */
+API(kernel32, DWORD, GetLastError, (void)) { return aw_get_last_error(); }
+API(kernel32, void, SetLastError, (DWORD e)) { aw_set_last_error(e); }
+
+static uint64_t mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
+uint32_t aw_tick_ms(void) { return (uint32_t)mono_ms(); }
+API(kernel32, DWORD, GetTickCount, (void)) { return aw_tick_ms(); }
+API(kernel32, ULONGLONG, GetTickCount64, (void)) { return mono_ms(); }
+
+/* 100-ns intervals since 1601-01-01 UTC */
+uint64_t aw_now_filetime(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ((uint64_t)ts.tv_sec + 11644473600ull) * 10000000ull + (uint64_t)ts.tv_nsec / 100u;
+}
+
+/* ------------------------------------------------------------------ */
+/* handles: std handles, synchronous file writes, handle release hooks  */
+/* ------------------------------------------------------------------ */
+API(kernel32, HANDLE, GetStdHandle, (DWORD which))
+{
+    switch (which) {
+    case (DWORD)-10: return std_handles[0];
+    case (DWORD)-11: return std_handles[1];
+    case (DWORD)-12: return std_handles[2];
+    }
+    aw_set_last_error(87);
+    return INVALID_HANDLE_VALUE;
+}
+
+API(kernel32, BOOL, WriteFile, (HANDLE h, const void *buf, DWORD n, DWORD *written, void *ov))
+{
+    (void)ov; /* no overlapped I/O: writes complete before returning */
+    if (written)
+        *written = 0;
+    int fd = aw_handle_fd(h);
+    if (fd < 0) {
+        aw_set_last_error(6);
+        return FALSE;
+    }
+    const uint8_t *p = buf;
+    DWORD done = 0;
+    while (done < n) {
+        ssize_t w = write(fd, p + done, n - done);
+        if (w < 0) {
+            if (errno == EINTR)
+                continue;
+            aw_set_last_error(winerr(errno));
+            break;
+        }
+        done += (DWORD)w;
+    }
+    if (written)
+        *written = done;
+    return done == n;
+}
+
+/* sync.c hooks: CloseHandle of H_FILE / H_FIND / H_MAPPING, H_PROCESS, and waits */
+void aw_file_close(aw_object *o)
+{
+    int fd = aw_obj_fd(o);
+    char **path = aw_obj_path(o);
+    if (fd >= 0) {
+        close(fd);
+        aw_obj_set_fd(o, -1);
+    }
+    if (*path && *aw_obj_delete_on_close(o))
+        unlink(*path);
+    free(*path);
+    *path = NULL;
+}
+
+void aw_process_close(aw_object *o)
+{
+    void **ext = aw_obj_ext(o);
+    free(*ext);
+    *ext = NULL;
+}
+
+/* no child processes exist in Stage 1: a process object is signaled only when set */
+int aw_process_poll(aw_object *o) { return aw_obj_is_signaled(o); }
+
+/* QueueUserAPC is not in Stage 1, so no APC can ever be pending */
+int aw_apc_run(DWORD tid)
+{
+    (void)tid;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* files and directories (Tier 1: CreateDirectoryA only)                */
+/* ------------------------------------------------------------------ */
+API(kernel32, BOOL, CreateDirectoryA, (const char *path, void *sa))
+{
+    (void)sa;
+    if (!path || !*path) {
+        aw_set_last_error(3); /* ERROR_PATH_NOT_FOUND */
+        return FALSE;
+    }
+    char *u = aw_unix_path(path);
+    int r = mkdir(u, 0777);
+    int e = errno;
+    free(u);
+    if (r) {
+        aw_set_last_error(winerr(e));
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------ */
+/* arithmetic and code pages                                            */
+/* ------------------------------------------------------------------ */
+/* round-half-away-from-zero of a*b/c; -1 on division by zero or overflow */
+API(kernel32, INT, MulDiv, (INT a, INT b, INT c))
+{
+    if (!c)
+        return -1;
+    int64_t p = (int64_t)a * b;
+    int neg = (p < 0) != (c < 0);
+    uint64_t ap = p < 0 ? (uint64_t)-p : (uint64_t)p;
+    uint64_t ac = c < 0 ? (uint64_t)-(int64_t)c : (uint64_t)c;
+    uint64_t q = (ap + ac / 2) / ac;
+    if (q > 0x7fffffffu)
+        return -1;
+    return neg ? -(INT)q : (INT)q;
+}
+
+/* The ANSI code page is UTF-8 (see PLAN-CORE §4 rule 5); CP_ACP, CP_OEMCP and CP_THREAD_ACP
+ * name it. No other code page has a converter in Stage 1. */
+static int cp_is_utf8(UINT cp) { return cp == 0 || cp == 1 || cp == 3 || cp == 65001; }
+
+/* UTF-8 is not a double-byte code page, so no byte is a lead byte */
+API(kernel32, BOOL, IsDBCSLeadByteEx, (UINT cp, BYTE ch))
+{
+    (void)cp;
+    (void)ch;
+    return FALSE;
+}
+
+/* MB_ERR_INVALID_CHARS and MB_PRECOMPOSED are accepted and ignored: invalid UTF-8 bytes always
+ * decode as Latin-1 (PLAN-CORE §4 rule 5). */
+API(kernel32, INT, MultiByteToWideChar, (UINT cp, DWORD flags, const char *src, INT srclen, WCHAR *dst, INT dstlen))
+{
+    (void)flags;
+    if (!cp_is_utf8(cp) || !src || !srclen || dstlen < 0) {
+        aw_set_last_error(87);
+        return 0;
+    }
+    if (srclen < 0)
+        srclen = (INT)strlen(src) + 1; /* the terminator is converted and counted */
+    INT need = aw_u2w_buf(src, srclen, NULL, 0);
+    if (!dst || !dstlen)
+        return need;
+    if (need > dstlen) {
+        aw_set_last_error(122); /* ERROR_INSUFFICIENT_BUFFER */
+        return 0;
+    }
+    aw_u2w_buf(src, srclen, dst, dstlen);
+    return need;
+}
+
+API(kernel32, INT, WideCharToMultiByte,
+    (UINT cp, DWORD flags, const WCHAR *src, INT srclen, char *dst, INT dstlen, const char *defchar, BOOL *used))
+{
+    (void)flags;
+    (void)defchar;
+    if (used)
+        *used = FALSE; /* UTF-8 encodes every UTF-16 unit, so the default character is never used */
+    if (!cp_is_utf8(cp) || !src || !srclen || dstlen < 0) {
+        aw_set_last_error(87);
+        return 0;
+    }
+    if (srclen < 0)
+        srclen = (INT)aw_wcslen(src) + 1;
+    INT need = aw_w2u_buf(src, srclen, NULL, 0);
+    if (!dst || !dstlen)
+        return need;
+    if (need > dstlen) {
+        aw_set_last_error(122);
+        return 0;
+    }
+    aw_w2u_buf(src, srclen, dst, dstlen);
+    return need;
+}
+
+/* ------------------------------------------------------------------ */
+/* exception filter storage (UnhandledExceptionFilter itself is package C) */
+/* ------------------------------------------------------------------ */
+API(kernel32, void *, SetUnhandledExceptionFilter, (void *filter))
+{
+    void *old = unhandled_filter;
+    unhandled_filter = filter;
+    return old;
+}
+
+/* ------------------------------------------------------------------ */
+/* virtual memory: VirtualProtect / VirtualQuery                        */
+/* The page table is read from /proc/self/maps, so answers reflect the  */
+/* real mappings of the relinked image (MinGW pseudo-relocations call    */
+/* VirtualProtect on their own sections and must see the change).       */
+/* ------------------------------------------------------------------ */
+#define PAGE_NOACCESS 0x01u
+#define PAGE_READONLY 0x02u
+#define PAGE_READWRITE 0x04u
+#define PAGE_WRITECOPY 0x08u
+#define PAGE_EXECUTE 0x10u
+#define PAGE_EXECUTE_READ 0x20u
+#define PAGE_EXECUTE_READWRITE 0x40u
+#define PAGE_EXECUTE_WRITECOPY 0x80u
+#define MEM_COMMIT 0x1000u
+#define MEM_FREE 0x10000u
+#define MEM_PRIVATE 0x20000u
+#define MEM_IMAGE 0x1000000u
+#define ERROR_INVALID_PARAMETER 87u
+#define ERROR_INVALID_ADDRESS 487u
+#define PGSZ ((uintptr_t)sysconf(_SC_PAGESIZE))
+
+/* x64 MEMORY_BASIC_INFORMATION */
+typedef struct {
+    void *BaseAddress, *AllocationBase;
+    DWORD AllocationProtect;
+    WORD PartitionId;
+    SIZE_T RegionSize;
+    DWORD State, Protect, Type;
+} MBI_X64;
+_Static_assert(sizeof(MBI_X64) == 48, "MEMORY_BASIC_INFORMATION size");
+
+struct mapent {
+    uintptr_t start, end;
+    int r, w, x;
+    char *path; /* NULL for anonymous memory */
+};
+struct mapset {
+    struct mapent *e;
+    size_t n;
+};
+
+static void maps_load(struct mapset *m)
+{
+    size_t cap = 0;
+    m->e = NULL;
+    m->n = 0;
+    FILE *f = fopen("/proc/self/maps", "r");
+    if (!f)
+        return;
+    char line[8192];
+    while (fgets(line, sizeof line, f)) {
+        unsigned long s, e;
+        char perm[8] = {0}, path[4096] = {0};
+        if (sscanf(line, "%lx-%lx %7s %*s %*s %*s %4095[^\n]", &s, &e, perm, path) < 3)
+            continue;
+        if (m->n == cap) {
+            size_t nc = cap ? cap * 2 : 256;
+            struct mapent *ne = realloc(m->e, nc * sizeof *ne);
+            if (!ne)
+                break;
+            m->e = ne;
+            cap = nc;
+        }
+        struct mapent *me = &m->e[m->n++];
+        me->start = s;
+        me->end = e;
+        me->r = perm[0] == 'r';
+        me->w = perm[1] == 'w';
+        me->x = perm[2] == 'x';
+        me->path = path[0] ? strdup(path) : NULL;
+    }
+    fclose(f);
+}
+
+static void maps_free(struct mapset *m)
+{
+    for (size_t i = 0; i < m->n; i++)
+        free(m->e[i].path);
+    free(m->e);
+    m->e = NULL;
+    m->n = 0;
+}
+
+static long maps_at(const struct mapset *m, uintptr_t a)
+{
+    for (size_t i = 0; i < m->n; i++)
+        if (a >= m->e[i].start && a < m->e[i].end)
+            return (long)i;
+    return -1;
+}
+
+static int same_path(const char *a, const char *b)
+{
+    if (!a || !b)
+        return a == b;
+    return !strcmp(a, b);
+}
+
+static int same_prot(const struct mapent *a, const struct mapent *b)
+{
+    return a->r == b->r && a->w == b->w && a->x == b->x && same_path(a->path, b->path);
+}
+
+/* Windows protection constant of one mapping */
+static DWORD win_prot_of(const struct mapent *e)
+{
+    if (e->x)
+        return e->w ? PAGE_EXECUTE_READWRITE : e->r ? PAGE_EXECUTE_READ : PAGE_EXECUTE;
+    if (e->w)
+        return PAGE_READWRITE;
+    if (e->r)
+        return PAGE_READONLY;
+    return PAGE_NOACCESS;
+}
+
+/* mprotect flags of a Windows protection constant; -1 if invalid. PAGE_GUARD, PAGE_NOCACHE and
+ * PAGE_WRITECOMBINE (0x100..0x400) are accepted and ignored. */
+static int unix_prot_of(DWORD p)
+{
+    if (p & ~0x7ffu)
+        return -1;
+    switch (p & 0xffu) {
+    case PAGE_NOACCESS: return PROT_NONE;
+    case PAGE_READONLY: return PROT_READ;
+    case PAGE_READWRITE:
+    case PAGE_WRITECOPY: return PROT_READ | PROT_WRITE;
+    case PAGE_EXECUTE: return PROT_EXEC;
+    case PAGE_EXECUTE_READ: return PROT_READ | PROT_EXEC;
+    case PAGE_EXECUTE_READWRITE:
+    case PAGE_EXECUTE_WRITECOPY: return PROT_READ | PROT_WRITE | PROT_EXEC;
+    default: return -1;
+    }
+}
+
+/* File-backed mappings (the relinked executable and shared objects) are reported as images;
+ * Stage 1 has no mapped-file views. Anonymous mappings are private. */
+static DWORD mem_type_of(const char *path)
+{
+    return path && path[0] == '/' ? MEM_IMAGE : MEM_PRIVATE;
+}
+
+/* first index of the run of mappings that share entry i's protection and path */
+static size_t prot_run_lo(const struct mapset *m, size_t i)
+{
+    size_t lo = i;
+    while (lo > 0 && m->e[lo - 1].end == m->e[lo].start && same_prot(&m->e[lo - 1], &m->e[i]))
+        lo--;
+    return lo;
+}
+
+static size_t prot_run_hi(const struct mapset *m, size_t i)
+{
+    size_t hi = i;
+    while (hi + 1 < m->n && m->e[hi].end == m->e[hi + 1].start && same_prot(&m->e[hi + 1], &m->e[i]))
+        hi++;
+    return hi;
+}
+
+/* first index of the allocation holding entry i: an image spans several protection runs of
+ * the same file; anonymous memory is its own allocation */
+static size_t alloc_lo(const struct mapset *m, size_t i)
+{
+    if (!m->e[i].path)
+        return prot_run_lo(m, i);
+    size_t lo = i;
+    while (lo > 0 && m->e[lo - 1].end == m->e[lo].start && same_path(m->e[lo - 1].path, m->e[i].path))
+        lo--;
+    return lo;
+}
+
+API(kernel32, SIZE_T, VirtualQuery, (const void *addr, void *buf, SIZE_T len))
+{
+    if (!buf || len < sizeof(MBI_X64)) {
+        aw_set_last_error(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+    uintptr_t a = (uintptr_t)addr;
+    uintptr_t pg = a & ~(PGSZ - 1);
+    MBI_X64 mbi;
+    memset(&mbi, 0, sizeof mbi);
+    struct mapset m;
+    maps_load(&m);
+    long i = maps_at(&m, a);
+    if (i < 0) {
+        /* free region: from this page up to the next mapping above it */
+        uintptr_t next = UINTPTR_MAX & ~(PGSZ - 1);
+        for (size_t j = 0; j < m.n; j++)
+            if (m.e[j].start > a && m.e[j].start < next)
+                next = m.e[j].start;
+        mbi.BaseAddress = (void *)pg;
+        mbi.RegionSize = next - pg;
+        mbi.State = MEM_FREE;
+        mbi.Protect = PAGE_NOACCESS;
+    } else {
+        size_t lo = prot_run_lo(&m, (size_t)i), hi = prot_run_hi(&m, (size_t)i);
+        size_t al = alloc_lo(&m, (size_t)i);
+        mbi.BaseAddress = (void *)m.e[lo].start;
+        mbi.AllocationBase = (void *)m.e[al].start;
+        mbi.AllocationProtect = win_prot_of(&m.e[al]);
+        mbi.RegionSize = m.e[hi].end - m.e[lo].start;
+        mbi.State = MEM_COMMIT;
+        mbi.Protect = win_prot_of(&m.e[i]);
+        mbi.Type = mem_type_of(m.e[i].path);
+    }
+    maps_free(&m);
+    memcpy(buf, &mbi, sizeof mbi);
+    return sizeof mbi;
+}
+
+API(kernel32, BOOL, VirtualProtect, (void *addr, SIZE_T size, DWORD prot, DWORD *old))
+{
+    uintptr_t a = (uintptr_t)addr;
+    int up = unix_prot_of(prot);
+    if (!old || !size || up < 0 || a + size < a) {
+        aw_set_last_error(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    uintptr_t pg = PGSZ;
+    uintptr_t start = a & ~(pg - 1);
+    uintptr_t end = (a + size + pg - 1) & ~(pg - 1);
+    struct mapset m;
+    maps_load(&m);
+    long first = maps_at(&m, start);
+    int ok = first >= 0;
+    DWORD oldp = ok ? win_prot_of(&m.e[first]) : 0;
+    for (uintptr_t cur = start; ok && cur < end;) {
+        long j = maps_at(&m, cur);
+        if (j < 0)
+            ok = 0;
+        else
+            cur = m.e[j].end;
+    }
+    maps_free(&m);
+    if (!ok) { /* the whole range must be mapped; nothing is changed otherwise */
+        aw_set_last_error(ERROR_INVALID_ADDRESS);
+        return FALSE;
+    }
+    if (mprotect((void *)start, end - start, up) != 0) {
+        aw_set_last_error(winerr(errno));
+        return FALSE;
+    }
+    *old = oldp;
+    return TRUE;
+}
+
+/* ------------------------------------------------------------------ */
+/* resources: aw_find_resource walks the image's .rsrc directory         */
+/* ------------------------------------------------------------------ */
+struct rname {
+    int is_id;      /* MAKEINTRESOURCE value, or "#123" */
+    uint32_t id;
+    const WCHAR *s; /* otherwise a UTF-16 name, compared case-insensitively */
+    size_t n;
+};
+
+static void rname_of(const void *p, struct rname *r)
+{
+    memset(r, 0, sizeof *r);
+    if (IS_INTRESOURCE(p)) {
+        r->is_id = 1;
+        r->id = (uint32_t)(uintptr_t)p;
+        return;
+    }
+    const WCHAR *w = p;
+    size_t n = aw_wcslen(w);
+    if (n > 1 && w[0] == '#') {
+        uint32_t v = 0;
+        size_t i = 1;
+        for (; i < n && w[i] >= '0' && w[i] <= '9'; i++)
+            v = v * 10 + (w[i] - '0');
+        if (i == n) {
+            r->is_id = 1;
+            r->id = v;
+            return;
+        }
+    }
+    r->s = w;
+    r->n = n;
+}
+
+static WCHAR fold_w(WCHAR c) { return c >= 'A' && c <= 'Z' ? (WCHAR)(c + 32) : c; }
+
+/* the named directory entry at nameoff (high bit set) equals the wanted UTF-16 name */
+static int res_name_is(const uint8_t *res, uint32_t nameoff, const struct rname *w)
+{
+    if (w->is_id)
+        return 0;
+    const uint8_t *p = res + (nameoff & 0x7fffffffu);
+    uint16_t len;
+    memcpy(&len, p, 2);
+    if (len != w->n)
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        WCHAR c;
+        memcpy(&c, p + 2 + 2 * i, 2);
+        if (fold_w(c) != fold_w(w->s[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/* looks w up in the resource directory at dir; on success *off is its OffsetToData */
+static int res_find(const uint8_t *res, const uint8_t *lim, const uint8_t *dir, const struct rname *w, uint32_t *off)
+{
+    if (dir + 16 > lim)
+        return 0;
+    uint16_t named, ids;
+    memcpy(&named, dir + 12, 2);
+    memcpy(&ids, dir + 14, 2);
+    const uint8_t *e = dir + 16;
+    for (uint32_t i = 0; i < (uint32_t)named + ids; i++, e += 8) {
+        if (e + 8 > lim)
+            break;
+        uint32_t name, o;
+        memcpy(&name, e, 4);
+        memcpy(&o, e + 4, 4);
+        int hit = (name & 0x80000000u) ? res_name_is(res, name, w) : (w->is_id && name == w->id);
+        if (hit) {
+            *off = o;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void *aw_find_resource(void *module, const void *type, const void *name, uint32_t *size)
+{
+    if (module && module != (void *)__aw_image_base)
+        return NULL; /* fake DLL modules carry no resources */
+    uint8_t *base = (uint8_t *)__aw_image_base;
+    uint32_t pe, ndirs, rva, rsz;
+    memcpy(&pe, base + 0x3c, 4);
+    uint8_t *opt = base + pe + 24;
+    memcpy(&ndirs, opt + 108, 4);
+    if (ndirs < 3)
+        return NULL;
+    memcpy(&rva, opt + 112 + 2 * 8, 4); /* data directory 2: resources */
+    memcpy(&rsz, opt + 112 + 2 * 8 + 4, 4);
+    if (!rva)
+        return NULL;
+    const uint8_t *res = base + rva, *lim = res + rsz;
+    struct rname t, n;
+    rname_of(type, &t);
+    rname_of(name, &n);
+    uint32_t off;
+    if (!res_find(res, lim, res, &t, &off) || !(off & 0x80000000u))
+        return NULL;
+    const uint8_t *d = res + (off & 0x7fffffffu);
+    if (!res_find(res, lim, d, &n, &off) || !(off & 0x80000000u))
+        return NULL;
+    d = res + (off & 0x7fffffffu);
+    /* language: the first entry of the name directory */
+    if (d + 16 + 8 > lim)
+        return NULL;
+    uint16_t named, ids;
+    memcpy(&named, d + 12, 2);
+    memcpy(&ids, d + 14, 2);
+    if (!named && !ids)
+        return NULL;
+    uint32_t loff;
+    memcpy(&loff, d + 16 + 4, 4);
+    if (loff & 0x80000000u)
+        return NULL; /* a directory where a data entry belongs */
+    const uint8_t *de = res + loff;
+    if (de + 16 > lim)
+        return NULL;
+    uint32_t drva, dsz;
+    memcpy(&drva, de, 4);
+    memcpy(&dsz, de + 4, 4);
+    if (size)
+        *size = dsz;
+    return base + drva;
 }

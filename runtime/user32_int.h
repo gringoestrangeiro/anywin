@@ -1,11 +1,13 @@
-/* user32 core - internal shared definitions.
+/* user32 core - internal shared definitions (S5).
  *
- * Split across: user32_wnd.c (objects/classes/creation/hierarchy/data),
- * user32_geom.c (geometry/show/z-order), user32_msg.c (queues/messages/DefWindowProc),
- * user32_paint.c (update regions/DC/scroll/print), user32_nc.c (non-client area/scrollbars),
- * user32_input.c (X events, mouse/keyboard/focus/capture/cursor),
- * user32_icon.c (icons/cursors/resources), user32_clip.c (clipboard),
- * user32_sys.c (system metrics/colors/SPI/DPI/monitors), user32_misc.c (strings/wsprintf/caret/dialog).
+ * Split across: user32_class.c (atoms, window classes, class data, registered messages),
+ * user32_wnd.c (window table, CreateWindowEx/DestroyWindow, text, window data, hierarchy, lookup, init),
+ * user32_geom.c (origins, clipping, visibility, ShowWindow, SetWindowPos, rects, AdjustWindowRect),
+ * user32_msg.c (queues, send/post, GetMessage loop, dispatch, timers, DefWindowProc),
+ * user32_paint.c (update regions, BeginPaint/EndPaint, DCs, WM_PAINT generation, back-buffer flush),
+ * user32_nc.c (non-client insets, hit testing, frame painting, weak menu/dialog hooks),
+ * user32_input.c (X events to messages, activation/focus, capture, cursor, keys, hover),
+ * user32_icon.c (icons/cursors: system, RT_GROUP_ICON/RT_ICON, .ico), user32_sys.c (metrics, colours, DPI).
  */
 #ifndef AW_USER32_INT_H
 #define AW_USER32_INT_H
@@ -900,13 +902,457 @@ typedef BOOL(AWCALL *PROPENUMPROC)(HWND, LPCWSTR, HANDLE, ULONG_PTR);
 typedef BOOL(AWCALL *PROPENUMPROCA)(HWND, LPCSTR, HANDLE, ULONG_PTR);
 typedef BOOL(AWCALL *ENUMWINDOWSPROC)(HWND, LPARAM);
 
-/* ------------------------------------------------------------------ registry objects */
+
+/* ------------------------------------------------------------------ winuser constants (from the mingw winuser.h values) */
+#define RT_MANIFEST 24
+#define SW_MAX 11
+#define SW_PARENTCLOSING 1
+#define SW_OTHERZOOM 2
+#define SW_PARENTOPENING 3
+#define SW_OTHERUNZOOM 4
+#define VK_LBUTTON 0x01
+#define VK_RBUTTON 0x02
+#define VK_CANCEL 0x03
+#define VK_MBUTTON 0x04
+#define VK_XBUTTON1 0x05
+#define VK_XBUTTON2 0x06
+#define VK_BACK 0x08
+#define VK_TAB 0x09
+#define VK_CLEAR 0x0C
+#define VK_RETURN 0x0D
+#define VK_SHIFT 0x10
+#define VK_CONTROL 0x11
+#define VK_MENU 0x12
+#define VK_PAUSE 0x13
+#define VK_CAPITAL 0x14
+#define VK_KANA 0x15
+#define VK_HANGEUL 0x15
+#define VK_HANGUL 0x15
+#define VK_IME_ON 0x16
+#define VK_JUNJA 0x17
+#define VK_FINAL 0x18
+#define VK_HANJA 0x19
+#define VK_KANJI 0x19
+#define VK_IME_OFF 0x1A
+#define VK_ESCAPE 0x1B
+#define VK_CONVERT 0x1C
+#define VK_NONCONVERT 0x1D
+#define VK_ACCEPT 0x1E
+#define VK_MODECHANGE 0x1F
+#define VK_SPACE 0x20
+#define VK_PRIOR 0x21
+#define VK_NEXT 0x22
+#define VK_END 0x23
+#define VK_HOME 0x24
+#define VK_LEFT 0x25
+#define VK_UP 0x26
+#define VK_RIGHT 0x27
+#define VK_DOWN 0x28
+#define VK_SELECT 0x29
+#define VK_PRINT 0x2A
+#define VK_EXECUTE 0x2B
+#define VK_SNAPSHOT 0x2C
+#define VK_INSERT 0x2D
+#define VK_DELETE 0x2E
+#define VK_HELP 0x2F
+#define VK_LWIN 0x5B
+#define VK_RWIN 0x5C
+#define VK_APPS 0x5D
+#define VK_SLEEP 0x5F
+#define VK_NUMPAD0 0x60
+#define VK_NUMPAD1 0x61
+#define VK_NUMPAD2 0x62
+#define VK_NUMPAD3 0x63
+#define VK_NUMPAD4 0x64
+#define VK_NUMPAD5 0x65
+#define VK_NUMPAD6 0x66
+#define VK_NUMPAD7 0x67
+#define VK_NUMPAD8 0x68
+#define VK_NUMPAD9 0x69
+#define VK_MULTIPLY 0x6A
+#define VK_ADD 0x6B
+#define VK_SEPARATOR 0x6C
+#define VK_SUBTRACT 0x6D
+#define VK_DECIMAL 0x6E
+#define VK_DIVIDE 0x6F
+#define VK_F1 0x70
+#define VK_F2 0x71
+#define VK_F3 0x72
+#define VK_F4 0x73
+#define VK_F5 0x74
+#define VK_F6 0x75
+#define VK_F7 0x76
+#define VK_F8 0x77
+#define VK_F9 0x78
+#define VK_F10 0x79
+#define VK_F11 0x7A
+#define VK_F12 0x7B
+#define VK_F13 0x7C
+#define VK_F14 0x7D
+#define VK_F15 0x7E
+#define VK_F16 0x7F
+#define VK_F17 0x80
+#define VK_F18 0x81
+#define VK_F19 0x82
+#define VK_F20 0x83
+#define VK_F21 0x84
+#define VK_F22 0x85
+#define VK_F23 0x86
+#define VK_F24 0x87
+#define VK_NAVIGATION_VIEW 0x88
+#define VK_NAVIGATION_MENU 0x89
+#define VK_NAVIGATION_UP 0x8A
+#define VK_NAVIGATION_DOWN 0x8B
+#define VK_NAVIGATION_LEFT 0x8C
+#define VK_NAVIGATION_RIGHT 0x8D
+#define VK_NAVIGATION_ACCEPT 0x8E
+#define VK_NAVIGATION_CANCEL 0x8F
+#define VK_NUMLOCK 0x90
+#define VK_SCROLL 0x91
+#define VK_OEM_NEC_EQUAL 0x92
+#define VK_OEM_FJ_JISHO 0x92
+#define VK_OEM_FJ_MASSHOU 0x93
+#define VK_OEM_FJ_TOUROKU 0x94
+#define VK_OEM_FJ_LOYA 0x95
+#define VK_OEM_FJ_ROYA 0x96
+#define VK_LSHIFT 0xA0
+#define VK_RSHIFT 0xA1
+#define VK_LCONTROL 0xA2
+#define VK_RCONTROL 0xA3
+#define VK_LMENU 0xA4
+#define VK_RMENU 0xA5
+#define VK_BROWSER_BACK 0xA6
+#define VK_BROWSER_FORWARD 0xA7
+#define VK_BROWSER_REFRESH 0xA8
+#define VK_BROWSER_STOP 0xA9
+#define VK_BROWSER_SEARCH 0xAA
+#define VK_BROWSER_FAVORITES 0xAB
+#define VK_BROWSER_HOME 0xAC
+#define VK_VOLUME_MUTE 0xAD
+#define VK_VOLUME_DOWN 0xAE
+#define VK_VOLUME_UP 0xAF
+#define VK_MEDIA_NEXT_TRACK 0xB0
+#define VK_MEDIA_PREV_TRACK 0xB1
+#define VK_MEDIA_STOP 0xB2
+#define VK_MEDIA_PLAY_PAUSE 0xB3
+#define VK_LAUNCH_MAIL 0xB4
+#define VK_LAUNCH_MEDIA_SELECT 0xB5
+#define VK_LAUNCH_APP1 0xB6
+#define VK_LAUNCH_APP2 0xB7
+#define VK_OEM_1 0xBA
+#define VK_OEM_PLUS 0xBB
+#define VK_OEM_COMMA 0xBC
+#define VK_OEM_MINUS 0xBD
+#define VK_OEM_PERIOD 0xBE
+#define VK_OEM_2 0xBF
+#define VK_OEM_3 0xC0
+#define VK_GAMEPAD_A 0xC3
+#define VK_GAMEPAD_B 0xC4
+#define VK_GAMEPAD_X 0xC5
+#define VK_GAMEPAD_Y 0xC6
+#define VK_GAMEPAD_RIGHT_SHOULDER 0xC7
+#define VK_GAMEPAD_LEFT_SHOULDER 0xC8
+#define VK_GAMEPAD_LEFT_TRIGGER 0xC9
+#define VK_GAMEPAD_RIGHT_TRIGGER 0xCA
+#define VK_GAMEPAD_DPAD_UP 0xCB
+#define VK_GAMEPAD_DPAD_DOWN 0xCC
+#define VK_GAMEPAD_DPAD_LEFT 0xCD
+#define VK_GAMEPAD_DPAD_RIGHT 0xCE
+#define VK_GAMEPAD_MENU 0xCF
+#define VK_GAMEPAD_VIEW 0xD0
+#define VK_GAMEPAD_LEFT_THUMBSTICK_BUTTON 0xD1
+#define VK_GAMEPAD_RIGHT_THUMBSTICK_BUTTON 0xD2
+#define VK_GAMEPAD_LEFT_THUMBSTICK_UP 0xD3
+#define VK_GAMEPAD_LEFT_THUMBSTICK_DOWN 0xD4
+#define VK_GAMEPAD_LEFT_THUMBSTICK_RIGHT 0xD5
+#define VK_GAMEPAD_LEFT_THUMBSTICK_LEFT 0xD6
+#define VK_GAMEPAD_RIGHT_THUMBSTICK_UP 0xD7
+#define VK_GAMEPAD_RIGHT_THUMBSTICK_DOWN 0xD8
+#define VK_GAMEPAD_RIGHT_THUMBSTICK_RIGHT 0xD9
+#define VK_GAMEPAD_RIGHT_THUMBSTICK_LEFT 0xDA
+#define VK_OEM_4 0xDB
+#define VK_OEM_5 0xDC
+#define VK_OEM_6 0xDD
+#define VK_OEM_7 0xDE
+#define VK_OEM_8 0xDF
+#define VK_OEM_AX 0xE1
+#define VK_OEM_102 0xE2
+#define VK_ICO_HELP 0xE3
+#define VK_ICO_00 0xE4
+#define VK_PROCESSKEY 0xE5
+#define VK_ICO_CLEAR 0xE6
+#define VK_PACKET 0xE7
+#define VK_OEM_RESET 0xE9
+#define VK_OEM_JUMP 0xEA
+#define VK_OEM_PA1 0xEB
+#define VK_OEM_PA2 0xEC
+#define VK_OEM_PA3 0xED
+#define VK_OEM_WSCTRL 0xEE
+#define VK_OEM_CUSEL 0xEF
+#define VK_OEM_ATTN 0xF0
+#define VK_OEM_FINISH 0xF1
+#define VK_OEM_COPY 0xF2
+#define VK_OEM_AUTO 0xF3
+#define VK_OEM_ENLW 0xF4
+#define VK_OEM_BACKTAB 0xF5
+#define VK_ATTN 0xF6
+#define VK_CRSEL 0xF7
+#define VK_EXSEL 0xF8
+#define VK_EREOF 0xF9
+#define VK_PLAY 0xFA
+#define VK_ZOOM 0xFB
+#define VK_NONAME 0xFC
+#define VK_PA1 0xFD
+#define VK_OEM_CLEAR 0xFE
+#define WM_MOUSEHOVER 0x02A1
+#define WM_MOUSELEAVE 0x02A3
+#define ICON_SMALL 0
+#define ICON_BIG 1
+#define ICON_SMALL2 2
+#define WVR_ALIGNTOP 0x0010
+#define WVR_ALIGNLEFT 0x0020
+#define WVR_ALIGNBOTTOM 0x0040
+#define WVR_ALIGNRIGHT 0x0080
+#define WVR_HREDRAW 0x0100
+#define WVR_VREDRAW 0x0200
+#define WVR_VALIDRECTS 0x0400
+#define MK_LBUTTON 0x0001
+#define MK_RBUTTON 0x0002
+#define MK_SHIFT 0x0004
+#define MK_CONTROL 0x0008
+#define MK_MBUTTON 0x0010
+#define MK_XBUTTON1 0x0020
+#define MK_XBUTTON2 0x0040
+#define TME_HOVER 0x00000001
+#define TME_LEAVE 0x00000002
+#define TME_NONCLIENT 0x00000010
+#define TME_QUERY 0x40000000
+#define TME_CANCEL 0x80000000
+#define HOVER_DEFAULT 0xFFFFFFFF
+#define CS_IME 0x00010000
+#define CS_DROPSHADOW 0x00020000
+#define PM_NOREMOVE 0x0000
+#define PM_REMOVE 0x0001
+#define PM_NOYIELD 0x0002
+#define KEYEVENTF_EXTENDEDKEY 0x0001
+#define KEYEVENTF_KEYUP 0x0002
+#define KEYEVENTF_UNICODE 0x0004
+#define KEYEVENTF_SCANCODE 0x0008
+#define MOUSEEVENTF_MOVE 0x0001
+#define MOUSEEVENTF_LEFTDOWN 0x0002
+#define MOUSEEVENTF_LEFTUP 0x0004
+#define MOUSEEVENTF_RIGHTDOWN 0x0008
+#define MOUSEEVENTF_RIGHTUP 0x0010
+#define MOUSEEVENTF_MIDDLEDOWN 0x0020
+#define MOUSEEVENTF_MIDDLEUP 0x0040
+#define MOUSEEVENTF_XDOWN 0x0080
+#define MOUSEEVENTF_XUP 0x0100
+#define MOUSEEVENTF_WHEEL 0x0800
+#define MOUSEEVENTF_HWHEEL 0x01000
+#define MOUSEEVENTF_MOVE_NOCOALESCE 0x2000
+#define MOUSEEVENTF_VIRTUALDESK 0x4000
+#define MOUSEEVENTF_ABSOLUTE 0x8000
+#define QS_KEY 0x0001
+#define QS_MOUSEMOVE 0x0002
+#define QS_MOUSEBUTTON 0x0004
+#define QS_POSTMESSAGE 0x0008
+#define QS_TIMER 0x0010
+#define QS_PAINT 0x0020
+#define QS_SENDMESSAGE 0x0040
+#define QS_HOTKEY 0x0080
+#define QS_ALLPOSTMESSAGE 0x0100
+#define QS_RAWINPUT 0x0400
+#define QS_TOUCH 0x0800
+#define QS_POINTER 0x1000
+#define SM_CXSCREEN 0
+#define SM_CYSCREEN 1
+#define SM_CXVSCROLL 2
+#define SM_CYHSCROLL 3
+#define SM_CYCAPTION 4
+#define SM_CXBORDER 5
+#define SM_CYBORDER 6
+#define SM_CXDLGFRAME 7
+#define SM_CYDLGFRAME 8
+#define SM_CYVTHUMB 9
+#define SM_CXHTHUMB 10
+#define SM_CXICON 11
+#define SM_CYICON 12
+#define SM_CXCURSOR 13
+#define SM_CYCURSOR 14
+#define SM_CYMENU 15
+#define SM_CXFULLSCREEN 16
+#define SM_CYFULLSCREEN 17
+#define SM_CYKANJIWINDOW 18
+#define SM_MOUSEPRESENT 19
+#define SM_CYVSCROLL 20
+#define SM_CXHSCROLL 21
+#define SM_DEBUG 22
+#define SM_SWAPBUTTON 23
+#define SM_RESERVED1 24
+#define SM_RESERVED2 25
+#define SM_RESERVED3 26
+#define SM_RESERVED4 27
+#define SM_CXMIN 28
+#define SM_CYMIN 29
+#define SM_CXSIZE 30
+#define SM_CYSIZE 31
+#define SM_CXFRAME 32
+#define SM_CYFRAME 33
+#define SM_CXMINTRACK 34
+#define SM_CYMINTRACK 35
+#define SM_CXDOUBLECLK 36
+#define SM_CYDOUBLECLK 37
+#define SM_CXICONSPACING 38
+#define SM_CYICONSPACING 39
+#define SM_MENUDROPALIGNMENT 40
+#define SM_PENWINDOWS 41
+#define SM_DBCSENABLED 42
+#define SM_CMOUSEBUTTONS 43
+#define SM_SECURE 44
+#define SM_CXEDGE 45
+#define SM_CYEDGE 46
+#define SM_CXMINSPACING 47
+#define SM_CYMINSPACING 48
+#define SM_CXSMICON 49
+#define SM_CYSMICON 50
+#define SM_CYSMCAPTION 51
+#define SM_CXSMSIZE 52
+#define SM_CYSMSIZE 53
+#define SM_CXMENUSIZE 54
+#define SM_CYMENUSIZE 55
+#define SM_ARRANGE 56
+#define SM_CXMINIMIZED 57
+#define SM_CYMINIMIZED 58
+#define SM_CXMAXTRACK 59
+#define SM_CYMAXTRACK 60
+#define SM_CXMAXIMIZED 61
+#define SM_CYMAXIMIZED 62
+#define SM_NETWORK 63
+#define SM_CLEANBOOT 67
+#define SM_CXDRAG 68
+#define SM_CYDRAG 69
+#define SM_SHOWSOUNDS 70
+#define SM_CXMENUCHECK 71
+#define SM_CYMENUCHECK 72
+#define SM_SLOWMACHINE 73
+#define SM_MIDEASTENABLED 74
+#define SM_MOUSEWHEELPRESENT 75
+#define SM_XVIRTUALSCREEN 76
+#define SM_YVIRTUALSCREEN 77
+#define SM_CXVIRTUALSCREEN 78
+#define SM_CYVIRTUALSCREEN 79
+#define SM_CMONITORS 80
+#define SM_SAMEDISPLAYFORMAT 81
+#define SM_IMMENABLED 82
+#define SM_CXFOCUSBORDER 83
+#define SM_CYFOCUSBORDER 84
+#define SM_TABLETPC 86
+#define SM_MEDIACENTER 87
+#define SM_STARTER 88
+#define SM_SERVERR2 89
+#define SM_MOUSEHORIZONTALWHEELPRESENT 91
+#define SM_CXPADDEDBORDER 92
+#define SM_DIGITIZER 94
+#define SM_MAXIMUMTOUCHES 95
+#define SM_CMETRICS 91
+#define SM_REMOTESESSION 0x1000
+#define SM_SHUTTINGDOWN 0x2000
+#define SM_REMOTECONTROL 0x2001
+#define SM_CARETBLINKINGENABLED 0x2002
+#define SM_CONVERTIBLESLATEMODE 0x2003
+#define SM_SYSTEMDOCKED 0x2004
+#define IMAGE_BITMAP 0
+#define IMAGE_ICON 1
+#define IMAGE_CURSOR 2
+#define IMAGE_ENHMETAFILE 3
+#define LR_DEFAULTCOLOR 0x0000
+#define LR_MONOCHROME 0x0001
+#define LR_COLOR 0x0002
+#define LR_COPYRETURNORG 0x0004
+#define LR_COPYDELETEORG 0x0008
+#define LR_LOADFROMFILE 0x0010
+#define LR_LOADTRANSPARENT 0x0020
+#define LR_DEFAULTSIZE 0x0040
+#define LR_VGACOLOR 0x0080
+#define LR_LOADMAP3DCOLORS 0x1000
+#define LR_CREATEDIBSECTION 0x2000
+#define LR_COPYFROMRESOURCE 0x4000
+#define LR_SHARED 0x8000
+#define DI_MASK 0x0001
+#define DI_IMAGE 0x0002
+#define DI_NORMAL 0x0003
+#define DI_COMPAT 0x0004
+#define DI_DEFAULTSIZE 0x0008
+#define DI_NOMIRROR 0x0010
+#define IDI_HAND 32513
+#define IDI_EXCLAMATION 32515
+#define IDI_ASTERISK 32516
+#define IDTRYAGAIN 10
+#define IDCONTINUE 11
+#define DWLP_MSGRESULT 0
+#define DLGC_WANTARROWS 0x0001
+#define DLGC_WANTTAB 0x0002
+#define DLGC_WANTALLKEYS 0x0004
+#define DLGC_WANTMESSAGE 0x0004
+#define DLGC_HASSETSEL 0x0008
+#define DLGC_DEFPUSHBUTTON 0x0010
+#define DLGC_UNDEFPUSHBUTTON 0x0020
+#define DLGC_RADIOBUTTON 0x0040
+#define DLGC_WANTCHARS 0x0080
+#define DLGC_STATIC 0x0100
+#define DLGC_BUTTON 0x2000
+
+/* ------------------------------------------------------------------ S5 hand-written constants */
+typedef DWORD *LPDWORD;
+typedef DWORD_PTR *PDWORD_PTR;
+static const WCHAR aw_wempty[1] = {0}; /* the empty UTF-16 string (L"" is 32-bit on Linux) */
+typedef int32_t *LPLONG;
+#ifndef MAKELONG
+#define MAKELONG(a, b) ((LONG)(((WORD)((uintptr_t)(a) & 0xFFFF)) | ((DWORD)((WORD)((uintptr_t)(b) & 0xFFFF))) << 16))
+#define LOWORD(l) ((WORD)((uintptr_t)(l) & 0xFFFF))
+#define HIWORD(l) ((WORD)(((uintptr_t)(l) >> 16) & 0xFFFF))
+#define MAKEWPARAM(a, b) ((WPARAM)(MAKELONG(a, b)))
+#define MAKELPARAM(a, b) ((LPARAM)(MAKELONG(a, b)))
+#define GET_X_LPARAM(l) ((int)(int16_t)LOWORD(l))
+#define GET_Y_LPARAM(l) ((int)(int16_t)HIWORD(l))
+#define GET_WHEEL_DELTA_WPARAM(w) ((int)(int16_t)HIWORD(w))
+#define GET_KEYSTATE_WPARAM(w) (LOWORD(w))
+#define GET_XBUTTON_WPARAM(w) (HIWORD(w))
+#endif
+#define MAKEINTRESOURCEA(i) ((LPCSTR)(uintptr_t)(WORD)(i))
+#define MAKEINTRESOURCEW(i) ((LPCWSTR)(uintptr_t)(WORD)(i))
+
+#ifndef RT_CURSOR
+#define RT_CURSOR ((LPCSTR)(uintptr_t)1)
+#define RT_BITMAP ((LPCSTR)(uintptr_t)2)
+#define RT_ICON ((LPCSTR)(uintptr_t)3)
+#define RT_GROUP_CURSOR ((LPCSTR)(uintptr_t)12)
+#define RT_GROUP_ICON ((LPCSTR)(uintptr_t)14)
+#endif
+#define AW_SM_MAX 100
+#define AW_CMD_MAX 1024
+
+/* ================================================================== S5 internal model
+ * user32_*.c share these definitions.  Windows are kept in a fixed table; HWNDs are
+ * (gen << 16) | (slot << 2) | 4 so they are never 0 and stale handles are rejected. */
 #define AW_MAX_WINDOWS 4096
 #define AW_MAX_CLASSES 1024
 #define AW_MAX_ATOMS 4096
 #define AW_ATOM_BASE 0xC000
+#define AW_TIMER_MIN_MS 10
+#define AW_DBLCLK_PX 4
 
-typedef struct aw_atom_entry { WCHAR *name; int used, global; } aw_atom_entry;
+/* COLORREF is 0x00BBGGRR; surface pixels are 0x00RRGGBB. */
+static inline uint32_t aw_px(COLORREF c)
+{
+    return ((c & 0xFFu) << 16) | (c & 0xFF00u) | ((c >> 16) & 0xFFu);
+}
+#define AW_RGB(r, g, b) ((COLORREF)((uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16)))
+
+typedef struct aw_atom_entry {
+    WCHAR *name;
+    int used, global;
+} aw_atom_entry;
 
 typedef struct aw_wndclass {
     ATOM atom;
@@ -918,11 +1364,11 @@ typedef struct aw_wndclass {
     HICON icon, icon_sm;
     HCURSOR cursor;
     HBRUSH brush;
-    WCHAR *menu_name;
+    WCHAR *menu_name;      /* NULL or malloc'd string */
+    uintptr_t menu_id;     /* integer resource id when menu_name is NULL and menu_id != 0 */
     WCHAR name[128];
     BYTE *cls_extra;
     int used, builtin;
-    int refcount;
 } aw_wndclass;
 
 struct aw_prop {
@@ -936,7 +1382,7 @@ typedef struct aw_win {
     uint16_t gen;
     uint8_t used, is_desktop, is_message;
     DWORD tid;
-    struct aw_wndclass *cls;
+    aw_wndclass *cls;
     WNDPROC proc;
     int unicode;
     UINT style, exstyle;
@@ -946,39 +1392,27 @@ typedef struct aw_win {
     HINSTANCE hinst;
     INT_PTR id;
     HWND parent, owner;
-    HWND first_child, last_child;
-    HWND next_sib, prev_sib;
-    RECT rect;
-    RECT client;
+    HWND first_child, last_child, next_sib, prev_sib;
+    RECT rect;             /* top-level: screen coords; child: client coords of its parent */
+    RECT client;           /* client area relative to the window's own top-left */
     LONG_PTR userdata;
     int extra_size;
     BYTE *extra;
     struct aw_prop *props;
-    SCROLLINFO hsi, vsi;
-    aw_region update;
-    aw_region wnd_rgn;
-    unsigned has_rgn : 1;
-    unsigned visible : 1, enabled : 1, minimized : 1, maximized : 1, active : 1;
-    unsigned in_create : 1, destroyed : 1, erase_pending : 1, nc_invalid : 1, internal_paint : 1;
-    unsigned redraw : 1, topmost : 1, has_menubar : 1, is_dialog : 1, no_parent_notify : 1;
-    unsigned tracking_leave : 1, tracking_hover : 1, tracking_nc : 1;
-    unsigned hscroll_vis : 1, vscroll_vis : 1;
-    unsigned hscroll_dis : 2, vscroll_dis : 2;
-    unsigned sb_drag : 2;
-    int sb_drag_off;
-    int sb_repeat;
-    int hover_x, hover_y;
-    DWORD hover_time, hover_tick;
-    uint32_t xwin;
-    aw_surface *surf;
-    HDC owndc, classdc;
+    aw_region update;      /* invalid area, client coords */
+    aw_region clip;        /* clip of the paint DC currently handed out (surface coords) */
+    int clip_active;
+    HFONT font;
     HICON icon_big, icon_small;
     HCURSOR cursor;
-    int cursor_set;
-    WINDOWPLACEMENT place;
-    DWORD last_active;
-    HDC print_dc;
-    struct aw_win *next_all;
+    HWND last_focus;       /* top-level: child that had the focus when the window was last active */
+    unsigned visible : 1, enabled : 1, minimized : 1, maximized : 1, active : 1;
+    unsigned destroyed : 1, erase_pending : 1, nc_invalid : 1, tracking_leave : 1, tracking_hover : 1;
+    unsigned in_paint : 1, shown_once : 1, topmost : 1, has_menu : 1, in_create : 1;
+    uint32_t xwin;         /* top-level: X window (0 for children and message windows) */
+    aw_surface *surf;      /* top-level: back buffer covering the whole window rect */
+    int cur_dpi;
+    void *sb;              /* scroll bar state (user32_scroll.c); NULL until first use */
 } aw_win;
 
 typedef struct aw_timer {
@@ -996,9 +1430,9 @@ typedef struct aw_sendreq {
     UINT msg;
     WPARAM w;
     LPARAM l;
+    int unicode;
     LRESULT result;
     int done;
-    int replied;
 } aw_sendreq;
 
 typedef struct aw_msg {
@@ -1009,212 +1443,164 @@ typedef struct aw_msg {
     LPARAM l;
     DWORD time;
     POINT pt;
-    DWORD extra;
-    int unicode;      /* charset of string parameters */
-    int is_input;
-    int is_timer;
-    int is_paint;
-    char text[8];     /* key text for TranslateMessage */
-    int scancode, flags;
+    void *owned;           /* string buffer converted to the target charset; freed after GetMessage */
+    char key_text[8];      /* KEYDOWN/SYSKEYDOWN: UTF-8 text for TranslateMessage */
 } aw_msg;
 
 typedef struct aw_queue {
     struct aw_queue *next;
     DWORD tid;
-    pthread_mutex_t lock;
     aw_msg *head, *tail;
-    aw_sendreq *sent_head, *sent_tail;
+    aw_sendreq *sent;      /* cross-thread SendMessage requests waiting for this thread */
     aw_timer *timers;
-    int quit, quit_code;
-    int in_send;
-    aw_sendreq *cur_send;
-    HWND focus, capture, active;
+    HWND focus, capture, active, hover;
+    int hover_x, hover_y;
+    DWORD hover_tick;
     MSG last;
+    int last_valid;
+    char key_text[8];
+    int key_sys;
     DWORD last_time;
     POINT last_pt;
-    DWORD last_extra;
-    int processing;
-    /* getmessage metadata for TranslateMessage */
-    char key_text[8];
-    int key_scancode, key_flags, key_is_sys;
+    HWND click_hwnd;
+    int click_btn, click_x, click_y;
+    DWORD click_time;
+    UINT_PTR next_timer_id;
+    void *owned_last;
+    int in_send;
 } aw_queue;
 
 /* ------------------------------------------------------------------ cross-file internals */
-extern pthread_mutex_t aw_wnd_lock;
+extern pthread_mutex_t aw_wnd_lock;     /* short data sections only; never held across callbacks */
+extern pthread_cond_t aw_send_cond;     /* cross-thread SendMessage completion */
+extern int aw_display;                  /* plat_init() succeeded */
+extern HWND aw_desktop_hwnd;            /* pseudo window covering the screen */
+
+/* user32_class.c */
+ATOM aw_atom_add(const WCHAR *name, int global);
+ATOM aw_atom_find(const WCHAR *name);
+const WCHAR *aw_atom_name(ATOM a);
+aw_wndclass *aw_class_find(const WCHAR *name, ATOM atom);
+ATOM aw_class_add(const aw_wndclass *tmpl, const WCHAR *name);
+int aw_wcmp_ci(const WCHAR *a, const WCHAR *b);
+int aw_wlen(const WCHAR *s);
+
+/* user32_wnd.c */
+aw_win *aw_win_slot(int i);
 aw_win *aw_win_from_hwnd(HWND h);
 aw_win *aw_win_from_xwin(uint32_t xwin);
 int aw_hwnd_valid(HWND h);
-aw_win *aw_win_alloc(void);
-void aw_win_release(aw_win *w);
-void aw_win_detach(aw_win *w);
-aw_surface *aw_win_surface(aw_win *w);
-void aw_win_surface_origin(aw_win *w, int *x, int *y);
 aw_win *aw_top_ancestor(aw_win *w);
-aw_win *aw_top_from_point(int x, int y);
-aw_win *aw_child_from_point(aw_win *parent, int x, int y, UINT flags);
-int aw_window_visible_chain(aw_win *w);
-int aw_window_enabled_chain(aw_win *w);
-void aw_insert_top(aw_win *w);
-void aw_remove_top(aw_win *w);
-void aw_insert_child(aw_win *parent, aw_win *w, HWND after);
-void aw_remove_child(aw_win *w);
-void aw_zorder_child(aw_win *w, HWND after);
-void aw_set_window_text(aw_win *w, const WCHAR *s, int len);
+aw_win *aw_win_alloc(void);
+void aw_win_free(aw_win *w);
+int aw_window_kind(const aw_win *w);
+void aw_link_child(aw_win *parent, aw_win *w, HWND after);
+void aw_unlink_child(aw_win *w);
+void aw_win_set_text(aw_win *w, const WCHAR *s, int len);
 void aw_update_x_title(aw_win *w);
-void aw_apply_icon(aw_win *w);
+void aw_destroy_window_internal(aw_win *w);
+void aw_destroy_owned(HWND owner);
+void aw_user_init(void);
 
-aw_wndclass *aw_class_find(const WCHAR *name, ATOM atom);
-ATOM aw_atom_add(const WCHAR *name, int global);
-const WCHAR *aw_atom_name(ATOM a);
-ATOM aw_atom_find(const WCHAR *name);
-int aw_atom_delete(ATOM a);
-ATOM aw_register_class(const WNDCLASSA *ca, const WNDCLASSW *cw, const WNDCLASSEXA *cxa, const WNDCLASSEXW *cxw, int unicode);
+/* user32_geom.c */
+void aw_win_origin(const aw_win *w, int *x, int *y);
+void aw_win_client_origin(const aw_win *w, int *x, int *y);
+void aw_win_surf_rect(const aw_win *w, RECT *r);
+void aw_win_client_surf_rect(const aw_win *w, RECT *r);
+void aw_clip_chain(const aw_win *w, aw_region *g);
+void aw_visible_region(const aw_win *w, aw_region *out);
+int aw_is_visible(const aw_win *w);
+BOOL aw_show_window(aw_win *w, int cmd);
+void aw_set_pos(aw_win *w, int x, int y, int cx, int cy, UINT flags);
+void aw_on_configure(aw_win *w, int x, int y, int cx, int cy);
 
-/* messages */
-LRESULT aw_send_msg(HWND h, UINT msg, WPARAM w, LPARAM l, int unicode);
-LRESULT aw_send_msg_ex(HWND h, UINT msg, WPARAM w, LPARAM l, int unicode, DWORD timeout, int *timedout);
-BOOL aw_post_msg(HWND h, UINT msg, WPARAM w, LPARAM l, int unicode);
-BOOL aw_post_thread_msg(DWORD tid, UINT msg, WPARAM w, LPARAM l, int unicode);
-LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode);
-aw_queue *aw_queue_current(void);
-aw_queue *aw_queue_for_tid(DWORD tid);
-aw_queue *aw_queue_create(DWORD tid);
-void aw_queue_pump(aw_queue *q);
-int aw_queue_has_posted(aw_queue *q);
-void aw_queue_wake(aw_queue *q);
-void aw_gen_idle(aw_queue *q);
-int aw_get_message(aw_queue *q, MSG *m, HWND filter, UINT min, UINT max, int remove, int block);
-void aw_msg_conv_free_all(void);
-void aw_focus_changed(aw_win *w, int set);
-void aw_active_changed(aw_win *w, int active);
-void aw_capture_changed(aw_win *neww, aw_win *oldw);
-void aw_flush_all(void);
-void aw_atexit_gui(void);
-void aw_repaint_nc(aw_win *w);
-void aw_mouse_track_hover(aw_win *w);
-void aw_input_dispatch(aw_plat_event *ev);
-void aw_input_init(void);
-void aw_input_tick(aw_queue *q);
-int aw_do_mouse_hit(aw_win *top, int rootx, int rooty, aw_win **out, int *ht);
-void aw_send_mouse_msg(aw_win *w, UINT msg, int x, int y, int ht, WPARAM keys, int dbl);
-void aw_nc_mouse(aw_win *w, UINT msg, int x, int y, WPARAM keys);
-void aw_do_track_leave(aw_win *w);
-
-/* painting */
-void aw_invalidate(aw_win *w, const RECT *r, int erase);
-void aw_invalidate_rgn(aw_win *w, const aw_region *r, int erase);
-void aw_visible_region(aw_win *w, aw_region *out);
-void aw_client_region_surface(aw_win *w, aw_region *out);
-int aw_gen_paint_msg(aw_queue *q, MSG *m, HWND filter);
-void aw_update_window(aw_win *w);
-HDC aw_get_dc(aw_win *w, int window_dc, const aw_region *clip);
-void aw_release_dc(aw_win *w, HDC hdc);
-void aw_scroll_window(aw_win *w, int dx, int dy, const RECT *scroll, const RECT *clip, int flags);
-void aw_print_window(aw_win *w, HDC hdc, UINT flags);
-
-/* non-client */
+/* user32_nc.c */
 void aw_nc_calc(aw_win *w);
-void aw_nc_calc_msg(aw_win *w, RECT *r);
-void aw_nc_default_client(aw_win *w, RECT *r);
-void aw_focus_set(HWND h);
-void aw_capture_set(HWND h);
-void aw_active_set(HWND h, int click);
-int aw_is_descendant(aw_win *anc, aw_win *w);
-BOOL aw_show_window(aw_win *w, int cmd, int activate);
-void aw_destroy_window_owned(HWND h);
+int aw_menu_height(aw_win *w);
 int aw_nc_hit(aw_win *w, int x, int y);
 void aw_nc_paint(aw_win *w);
-void aw_nc_paint_dc(aw_win *w, HDC hdc, int ox, int oy);
-void aw_nc_scroll_event(aw_win *w, int bar, int code, int pos);
-void aw_nc_timer(aw_win *w, UINT_PTR id);
-void aw_nc_track_mouse(aw_win *w, int x, int y, int rootx, int rooty, int down);
-void aw_nc_mouse_up(aw_win *w);
-int aw_nc_part_rect(aw_win *w, int part, RECT *out);
-void aw_set_menu(aw_win *w, HMENU m);
-int aw_menu_height(aw_win *w, int width);
 
-/* icons */
+/* user32_msg.c */
+aw_queue *aw_queue_current(void);
+aw_queue *aw_queue_for_tid(DWORD tid);
+LRESULT aw_send_msg(HWND h, UINT msg, WPARAM w, LPARAM l, int unicode);
+LRESULT aw_call_proc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int src_unicode);
+BOOL aw_post_input_text(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, DWORD time, int x, int y, const char *text);
+#define aw_post_input(w, msg, wp, lp, time, x, y) aw_post_input_text((w), (msg), (wp), (lp), (time), (x), (y), NULL)
+LRESULT aw_defwndproc(aw_win *w, UINT msg, WPARAM wp, LPARAM lp, int unicode);
+int aw_get_message(aw_queue *q, MSG *m, HWND filter, UINT min, UINT max, int remove, int block);
+void aw_timers_kill_for(HWND h);
+void aw_wake(void);
+int aw_post_thread_msg_q(aw_queue *q, UINT msg, WPARAM wp, LPARAM lp);
+
+/* user32_paint.c */
+void aw_invalidate_rgn(aw_win *w, const aw_region *r, int erase);
+void aw_invalidate(aw_win *w, const RECT *r, int erase);
+int aw_gen_paint(HWND *out);
+void aw_paint_now(aw_win *w);
+void aw_flush_all(void);
+HDC aw_dc_for(aw_win *w, const aw_region *vis, int window_dc);
+void aw_erase_bkgnd(aw_win *w, aw_win *top, const aw_region *clip, HBRUSH brush);
+
+/* user32_input.c */
+void aw_input_dispatch(aw_plat_event *ev);
+void aw_activate_top(aw_win *top, int active);
+void aw_capture_set(HWND h);
+void aw_hover_idle(void);
+void aw_apply_cursor(aw_win *w);
+void aw_key_set(int vk, int down, int toggled);
+
+/* user32_icon.c */
 aw_icon *aw_icon_alloc(int w, int h, int cursor);
 void aw_icon_free(aw_icon *ic);
 aw_icon *aw_icon_system(int id, int cursor);
-aw_icon *aw_icon_load(HINSTANCE h, const void *name, int cursor, int cx, int cy);
-aw_icon *aw_icon_from_resource(void *res, uint32_t size, int cursor, int wantw, int wanh);
-aw_icon *aw_icon_from_dib(const uint8_t *d, uint32_t size, int cursor, int wantw, int wanh);
-void aw_icon_cache_clear(void);
+aw_icon *aw_icon_from_resource(HINSTANCE h, const void *name, int cursor, int cx, int cy);
+aw_icon *aw_icon_from_file(const char *path, int cursor, int cx, int cy);
+aw_icon *aw_icon_from_dib(const uint8_t *d, uint32_t size, int cursor, int wantw, int wanth, int from_group);
 
-/* system */
-COLORREF aw_syscolor_internal(int idx);
-int aw_system_metric(int idx, int dpi);
-void aw_spi_get_nonclient(NONCLIENTMETRICSW *ncm);
-void aw_do_syscolor_change(void);
-
-/* misc helpers */
-int aw_vk_to_char(int vk, int shift, int ctrl, int alt, int caps, int *dead);
-int aw_char_to_vk(int ch, int *shift);
-const char *aw_vk_name(int vk, int extended);
-void aw_key_state_update(int vk, int down, uint32_t mods);
-extern uint8_t aw_key_state[256];
-extern uint8_t aw_key_async_new[256];
-extern int aw_key_swap;
-extern POINT aw_last_cursor;
-extern DWORD aw_last_input_tick;
-void aw_keyboard_state_from_mods(uint32_t mods);
-void aw_set_screen_pos_override(int on, int x, int y);
+/* user32_sys.c */
+int aw_system_metric(int idx);
 
 /* cross-package (ms_abi) */
-extern HBRUSH WINAPI __aw_gdi32_CreateSolidBrush(COLORREF);
-extern HGDIOBJ WINAPI __aw_gdi32_GetStockObject(int);
-extern HFONT WINAPI __aw_gdi32_CreateFontA(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, LPCSTR);
-extern HFONT WINAPI __aw_gdi32_CreateFontW(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, LPCWSTR);
-extern BOOL WINAPI __aw_gdi32_DeleteObject(HGDIOBJ);
-extern HGDIOBJ WINAPI __aw_gdi32_SelectObject(HDC, HGDIOBJ);
 extern COLORREF WINAPI __aw_gdi32_SetTextColor(HDC, COLORREF);
 extern COLORREF WINAPI __aw_gdi32_SetBkColor(HDC, COLORREF);
-extern int WINAPI __aw_gdi32_SetBkMode(HDC, int);
-extern BOOL WINAPI __aw_gdi32_GetTextExtentPoint32A(HDC, LPCSTR, int, SIZE *);
-extern BOOL WINAPI __aw_gdi32_GetTextExtentPoint32W(HDC, LPCWSTR, int, SIZE *);
-extern BOOL WINAPI __aw_gdi32_GetTextMetricsW(HDC, void *);
-extern BOOL WINAPI __aw_gdi32_GetTextMetricsA(HDC, void *);
-extern HDC WINAPI __aw_gdi32_CreateCompatibleDC(HDC);
-extern HBITMAP WINAPI __aw_gdi32_CreateCompatibleBitmap(HDC, int, int);
-extern HBITMAP WINAPI __aw_gdi32_CreateDIBSection(HDC, const void *, UINT, void **, HANDLE, DWORD);
-extern HBITMAP WINAPI __aw_gdi32_CreateBitmap(int, int, UINT, UINT, const void *);
-extern int WINAPI __aw_gdi32_GetObjectW(HGDIOBJ, int, void *);
-extern HRGN WINAPI __aw_gdi32_CreateRectRgn(int, int, int, int);
-extern BOOL WINAPI __aw_gdi32_BitBlt(HDC, int, int, int, int, HDC, int, int, DWORD);
-extern BOOL WINAPI __aw_gdi32_DeleteDC(HDC);
-extern int WINAPI __aw_gdi32_GetDeviceCaps(HDC, int);
-extern BOOL WINAPI __aw_gdi32_PatBlt(HDC, int, int, int, int, DWORD);
-extern COLORREF WINAPI __aw_gdi32_GetSysColor(int);
-extern HBRUSH WINAPI __aw_gdi32_GetSysColorBrush(int);
-
+extern HBRUSH WINAPI __aw_gdi32_CreateSolidBrush(COLORREF);
+extern HBRUSH WINAPI __aw_user32_GetSysColorBrush(int);
+extern HGDIOBJ WINAPI __aw_gdi32_GetStockObject(int);
 extern int WINAPI __aw_user32_FillRect(HDC, const RECT *, HBRUSH);
-extern int WINAPI __aw_user32_FrameRect(HDC, const RECT *, HBRUSH);
-extern int WINAPI __aw_user32_InvertRect(HDC, const RECT *);
-extern int WINAPI __aw_user32_DrawEdge(HDC, RECT *, UINT, UINT);
-extern int WINAPI __aw_user32_DrawFrameControl(HDC, RECT *, UINT, UINT);
-extern int WINAPI __aw_user32_DrawFocusRect(HDC, const RECT *);
-extern int WINAPI __aw_gdi32_ExcludeClipRect(HDC, int, int, int, int);
-extern int WINAPI __aw_gdi32_SelectClipRgn(HDC, HRGN);
-extern int WINAPI __aw_gdi32_GetClipBox(HDC, RECT *);
-extern int WINAPI __aw_user32_DrawTextW(HDC, const WCHAR *, int, RECT *, UINT);
-extern int WINAPI __aw_user32_DrawTextA(HDC, const char *, int, RECT *, UINT);
 
-extern HANDLE WINAPI __aw_kernel32_GlobalAlloc(UINT, SIZE_T);
-extern HANDLE WINAPI __aw_kernel32_GlobalFree(HANDLE);
-extern void *WINAPI __aw_kernel32_GlobalLock(HANDLE);
-extern BOOL WINAPI __aw_kernel32_GlobalUnlock(HANDLE);
-extern SIZE_T WINAPI __aw_kernel32_GlobalSize(HANDLE);
-extern HMODULE WINAPI __aw_kernel32_GetModuleHandleA(LPCSTR);
-extern HMODULE WINAPI __aw_kernel32_GetModuleHandleW(LPCWSTR);
-extern DWORD WINAPI __aw_kernel32_GetModuleFileNameA(HMODULE, LPSTR, DWORD);
-extern DWORD WINAPI __aw_kernel32_GetModuleFileNameW(HMODULE, LPWSTR, DWORD);
-extern DWORD WINAPI __aw_kernel32_GetTickCount(void);
-extern DWORD WINAPI __aw_kernel32_GetCurrentThreadId(void);
-extern UINT WINAPI __aw_kernel32_GetACP(void);
+/* S5 helpers shared between user32_*.c */
+void aw_style_insets(DWORD style, DWORD exstyle, int menu_h, int *l, int *t, int *r, int *b);
+void aw_screen_pos(const aw_win *w, int *x, int *y);
+void aw_screen_client_pos(const aw_win *w, int *x, int *y);
+int aw_is_alt_down(void);
+void aw_atexit_gui(void);
+extern HDC WINAPI __aw_user32_BeginPaint(HWND, PAINTSTRUCT *);
+extern BOOL WINAPI __aw_user32_EndPaint(HWND, const PAINTSTRUCT *);
+extern HDC WINAPI __aw_user32_GetDCEx(HWND, HRGN, DWORD);
+extern LRESULT WINAPI __aw_user32_DispatchMessageA(const MSG *);
+extern BOOL WINAPI __aw_user32_TranslateMessage(const MSG *);
+extern BOOL WINAPI __aw_user32_SetWindowPos(HWND, HWND, int, int, int, int, UINT);
+extern LRESULT WINAPI __aw_user32_DefWindowProcA(HWND, UINT, WPARAM, LPARAM);
+extern LRESULT WINAPI __aw_user32_DefWindowProcW(HWND, UINT, WPARAM, LPARAM);
+extern BOOL WINAPI __aw_user32_DrawIconEx(HDC, int, int, HICON, int, int, UINT, HBRUSH, UINT);
 
-extern HMENU WINAPI __aw_user32_LoadMenuW(HINSTANCE, LPCWSTR);
-extern BOOL WINAPI __aw_user32_DestroyMenu(HMENU);
-extern HMENU WINAPI __aw_user32_GetSystemMenu(HWND, BOOL);
+/* ------------------------------------------------------------------ hooks owned by other packages
+ * (weak fallbacks live in user32_nc.c; menu.c / dialog.c / controls override them).
+ * Tray (S8): `int aw_tray_handle_event(aw_plat_event *ev)` is weak in user32_input.c; return nonzero
+ * when the tray consumed the X event, and user32 skips it. */
+int aw_menubar_height(HWND hwnd, HMENU menu, int width);
+void aw_menubar_paint(HWND hwnd, HMENU menu, HDC window_dc, const RECT *bar);
+void aw_menubar_track(HWND hwnd, HMENU menu, int x, int y, int vk);
+int aw_menu_is_valid(HMENU menu);
+void aw_dialogs_register(void);
+void aw_menus_register(void);
+
+/* user32_scroll.c: standard scroll bars (WS_VSCROLL/WS_HSCROLL) */
+void aw_scroll_extra(aw_win *w, int *r, int *b);      /* adds the bar thickness to the right/bottom insets */
+int aw_scroll_hit(aw_win *w, int x, int y);           /* window coords -> HTHSCROLL/HTVSCROLL or 0 */
+void aw_scroll_nc_paint(aw_win *w, const aw_region *vis);
+void aw_scroll_track(aw_win *w, int hit, int sx, int sy); /* WM_NCLBUTTONDOWN on a bar: modal tracking */
+void aw_scroll_free(aw_win *w);
 
 #endif

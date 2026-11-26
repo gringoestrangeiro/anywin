@@ -1,53 +1,27 @@
-/* anywin - menus, menu bar, accelerators.  Part of work package G. */
-#include "awmd.h"
-#include <wctype.h>
+/* anywin - menu object model and item API (work package G subset, used by S6).
+ * HMENUs are 1-based indices into a global table (they fit in 32 bits, as the contract requires).
+ * Popup tracking (TrackPopupMenu) lives in menu_popup.c; the menu bar hooks are still deferred
+ * (user32_nc.c provides weak no-op defaults). */
+#include "menu_int.h"
 
-/* ======================================================================
- * Menu object model.  HMENUs are 1-based indices into a global table
- * (they fit in 32 bits, as required by the contract).
- * ====================================================================== */
-typedef struct aw_mitem {
-    UINT id;
-    UINT fType;   /* MFT_* bits that describe the kind (incl. menubreak/radio) */
-    UINT fState;  /* MFS_* bits */
-    WCHAR *text;  /* raw text incl. "\taccel" */
-    HMENU sub;
-    ULONG_PTR data;
-    HBITMAP bmpChecked, bmpUnchecked, bmpItem;
-} aw_mitem;
-
-typedef struct aw_menu {
-    uint32_t magic;
-    int popup;
-    int issystem;
-    aw_mitem *it;
-    int n, cap;
-    UINT defid;
-    AW_MENUINFO info;
-    HBRUSH back;      /* resolved background brush (created by us) */
-    int has_back;
-    HMENU self;
-} aw_menu;
-
-#define MENU_MAGIC 0x554e454d
 static aw_menu **g_menus;
 static int g_menus_n, g_menus_cap;
 
-static aw_menu *menu_get(HMENU h)
+#define ITEM_TYPE_MASK (MFT_BITMAP | MFT_MENUBARBREAK | MFT_MENUBREAK | MFT_OWNERDRAW | MFT_RADIOCHECK | \
+                        MFT_SEPARATOR | MFT_RIGHTJUSTIFY)
+#define ITEM_STATE_MASK (MFS_CHECKED | MFS_GRAYED | MFS_HILITE | MFS_DEFAULT)
+
+aw_menu *aw_menu_get(HMENU h)
 {
     uintptr_t i = (uintptr_t)h;
     if (!i || i > (uintptr_t)g_menus_n)
         return NULL;
     aw_menu *m = g_menus[i - 1];
-    return (m && m->magic == MENU_MAGIC) ? m : NULL;
+    return (m && m->magic == AW_MENU_MAGIC) ? m : NULL;
 }
 
-static HMENU menu_handle(aw_menu *m)
+static HMENU menu_register_slot(aw_menu *m)
 {
-    if (!m)
-        return NULL;
-    if (m->self)
-        return m->self;
     int slot = -1;
     for (int i = 0; i < g_menus_n; i++)
         if (!g_menus[i]) {
@@ -57,10 +31,10 @@ static HMENU menu_handle(aw_menu *m)
     if (slot < 0) {
         if (g_menus_n == g_menus_cap) {
             int nc = g_menus_cap ? g_menus_cap * 2 : 64;
-            aw_menu **nm = realloc(g_menus, nc * sizeof *nm);
+            aw_menu **nm = realloc(g_menus, (size_t)nc * sizeof *nm);
             if (!nm)
                 return NULL;
-            memset(nm + g_menus_cap, 0, (nc - g_menus_cap) * sizeof *nm);
+            memset(nm + g_menus_cap, 0, (size_t)(nc - g_menus_cap) * sizeof *nm);
             g_menus = nm;
             g_menus_cap = nc;
         }
@@ -76,10 +50,10 @@ static aw_menu *menu_new(int popup)
     aw_menu *m = calloc(1, sizeof *m);
     if (!m)
         return NULL;
-    m->magic = MENU_MAGIC;
+    m->magic = AW_MENU_MAGIC;
     m->popup = popup;
     m->info.cbSize = sizeof(AW_MENUINFO);
-    if (!menu_handle(m)) {
+    if (!menu_register_slot(m)) {
         free(m);
         return NULL;
     }
@@ -88,19 +62,16 @@ static aw_menu *menu_new(int popup)
 
 static void menu_free(aw_menu *m)
 {
-    if (!m)
-        return;
     for (int i = 0; i < m->n; i++) {
-        if (m->it[i].sub) {
-            aw_menu *sm = menu_get(m->it[i].sub);
+        aw_mitem *it = &m->it[i];
+        if (it->popup && it->sub) {
+            aw_menu *sm = aw_menu_get(it->sub);
             if (sm)
                 menu_free(sm);
         }
-        free(m->it[i].text);
+        free(it->text);
     }
     free(m->it);
-    if (m->has_back && m->back)
-        __aw_gdi32_DeleteObject(m->back);
     uintptr_t h = (uintptr_t)m->self;
     if (h && h <= (uintptr_t)g_menus_n)
         g_menus[h - 1] = NULL;
@@ -123,12 +94,6 @@ static int menu_reserve(aw_menu *m, int n)
     return 1;
 }
 
-static void item_clear(aw_mitem *it)
-{
-    free(it->text);
-    memset(it, 0, sizeof *it);
-}
-
 static void item_set_text(aw_mitem *it, const WCHAR *s, int len)
 {
     free(it->text);
@@ -144,319 +109,216 @@ static void item_set_text(aw_mitem *it, const WCHAR *s, int len)
     it->text[len] = 0;
 }
 
-/* flags -> type/state split used internally */
-static UINT flags_type(UINT f)
+/* Inserts at pos (-1 or n = append), taking ownership of src->text on success only. */
+static BOOL menu_insert(aw_menu *m, int pos, const aw_mitem *src)
 {
-    return f & (MF_POPUP | MF_BITMAP | MF_OWNERDRAW | MF_SEPARATOR | MF_MENUBARBREAK | MF_MENUBREAK |
-                MF_RIGHTJUSTIFY | MF_USECHECKBITMAPS);
-}
-static UINT flags_state(UINT f)
-{
-    return f & (MF_CHECKED | MF_GRAYED | MF_DISABLED | MF_HILITE | MF_DEFAULT);
+    if (pos < 0 || pos > m->n)
+        pos = m->n;
+    if (!menu_reserve(m, m->n + 1))
+        return FALSE;
+    memmove(&m->it[pos + 1], &m->it[pos], (size_t)(m->n - pos) * sizeof *m->it);
+    m->n++;
+    m->it[pos] = *src;
+    return TRUE;
 }
 
-static int menu_find_pos(aw_menu *m, UINT item, UINT flags)
+/* Builds an item from MF_* flags. text is the caption for strings and popups, a bitmap handle for
+ * MF_BITMAP and the item data for MF_OWNERDRAW (Windows overloads lpNewItem this way). */
+static int item_from_flags(aw_mitem *it, UINT flags, UINT_PTR id, const void *text, int text_is_wide)
 {
-    if (!m)
-        return -1;
+    memset(it, 0, sizeof *it);
+    it->fType = flags & ITEM_TYPE_MASK;
+    if (flags & (MF_GRAYED | MF_DISABLED)) it->fState |= MFS_GRAYED;
+    if (flags & MF_CHECKED) it->fState |= MFS_CHECKED;
+    if (flags & MF_HILITE) it->fState |= MFS_HILITE;
+    if (flags & MF_DEFAULT) it->fState |= MFS_DEFAULT;
+    if (flags & MF_POPUP) {
+        it->popup = 1;
+        it->sub = (HMENU)(uintptr_t)id;
+        it->fType = flags & (MFT_MENUBARBREAK | MFT_MENUBREAK | MFT_RIGHTJUSTIFY);
+        if (text)
+            item_set_text(it, text_is_wide ? (const WCHAR *)text : NULL, -1);
+        return 1;
+    }
+    if (flags & MF_SEPARATOR) {
+        it->fType = MFT_SEPARATOR;
+        return 1;
+    }
+    it->id = (UINT)id;
+    if (flags & MF_BITMAP) {
+        it->bmpItem = (HBITMAP)text;
+        it->id = (UINT)id;
+        return 1;
+    }
+    if (flags & MF_OWNERDRAW) {
+        it->data = (ULONG_PTR)text;
+        return 1;
+    }
+    if (text_is_wide)
+        item_set_text(it, text ? (const WCHAR *)text : NULL, -1);
+    return 1;
+}
+
+/* Position of an item: MF_BYPOSITION index or MF_BYCOMMAND id (popups never match by id). -1 if none. */
+static int find_item(aw_menu *m, UINT item, UINT flags)
+{
     if (flags & MF_BYPOSITION)
         return item < (UINT)m->n ? (int)item : -1;
     for (int i = 0; i < m->n; i++)
-        if (m->it[i].id == item)
+        if (!m->it[i].popup && m->it[i].id == item)
             return i;
     return -1;
 }
 
-/* insert an item at position pos (-1 = append), taking ownership of *src */
-static int menu_insert_item(aw_menu *m, int pos, const aw_mitem *src)
-{
-    if (!m || pos < -1 || pos > m->n)
-        return 0;
-    if (!menu_reserve(m, m->n + 1))
-        return 0;
-    if (pos < 0) {
-        pos = m->n++;
-    } else {
-        memmove(&m->it[pos + 1], &m->it[pos], (size_t)(m->n - pos) * sizeof(aw_mitem));
-        m->n++;
-    }
-    m->it[pos] = *src;
-    return 1;
-}
-
-static int menu_append_flags(aw_menu *m, UINT flags, UINT_PTR id, LPCWSTR text)
-{
-    if (!m)
-        return 0;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.id = (UINT)id;
-    it.fType = flags_type(flags) & ~MF_POPUP;
-    it.fState = flags_state(flags);
-    if (flags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)id;
-    } else if (flags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (flags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = id;
-    } else if (flags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)id;
-    } else {
-        it.fType |= MF_STRING;
-        item_set_text(&it, text, -1);
-    }
-    if (!menu_insert_item(m, -1, &it)) {
-        free(it.text);
-        return 0;
-    }
-    return 1;
-}
-
-static HMENU menu_create(int popup)
+static HMENU create_menu(int popup)
 {
     aw_menu *m = menu_new(popup);
     return m ? m->self : NULL;
 }
 
-API(user32, HMENU, CreateMenu, (void)) { return menu_create(0); }
-API(user32, HMENU, CreatePopupMenu, (void)) { return menu_create(1); }
+API(user32, HMENU, CreateMenu, (void)) { return create_menu(0); }
+API(user32, HMENU, CreatePopupMenu, (void)) { return create_menu(1); }
 
 API(user32, BOOL, DestroyMenu, (HMENU hMenu))
 {
-    aw_menu *m = menu_get(hMenu);
+    aw_menu *m = aw_menu_get(hMenu);
     if (!m)
         return FALSE;
     menu_free(m);
     return TRUE;
 }
 
-API(user32, BOOL, IsMenu, (HMENU hMenu)) { return menu_get(hMenu) != NULL; }
+API(user32, BOOL, IsMenu, (HMENU hMenu)) { return aw_menu_get(hMenu) != NULL; }
 
-static HMENU create_menu_fixed(int popup)
+/* ---- insertion ------------------------------------------------------- */
+static BOOL insert_flags(HMENU hMenu, int pos, UINT flags, UINT_PTR id, const void *text, int wide)
 {
-    (void)popup;
-    return menu_create(popup);
-}
-
-/* exported CreateMenu is fixed up below (C has no forward capture) */
-API(user32, BOOL, AppendMenuA, (HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem))
-{
-    if (!menu_get(hMenu))
-        return FALSE;
+    aw_menu *m = aw_menu_get(hMenu);
     aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.id = (UINT)uIDNewItem;
-    it.fType = flags_type(uFlags) & ~MF_POPUP;
-    it.fState = flags_state(uFlags);
-    if (uFlags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)uIDNewItem;
-    } else if (uFlags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (uFlags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = uIDNewItem;
-    } else if (uFlags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)uIDNewItem;
-    } else {
-        it.fType |= MF_STRING;
-        if (lpNewItem)
-            it.text = aw_u2w(lpNewItem, -1);
+    if (!m)
+        return FALSE;
+    item_from_flags(&it, flags, id, text, wide);
+    if (it.popup && !aw_menu_get(it.sub)) {
+        free(it.text);
+        return FALSE;
     }
-    if (!menu_insert_item(menu_get(hMenu), -1, &it)) {
+    if (!menu_insert(m, pos, &it)) {
         free(it.text);
         return FALSE;
     }
     return TRUE;
+}
+
+/* text must be converted to UTF-16 by the caller when ANSI */
+static BOOL insert_at(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, LPCSTR ansi, LPCWSTR wide, int is_wide)
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    if (!m)
+        return FALSE;
+    int pos;
+    if (flags & MF_BYPOSITION) {
+        if (position == (UINT)-1) {
+            pos = -1;
+        } else if (position > (UINT)m->n) {
+            return FALSE;
+        } else {
+            pos = (int)position;
+        }
+    } else {
+        pos = find_item(m, position, 0);
+        if (pos < 0)
+            pos = -1; /* not found: append */
+    }
+    if (is_wide) {
+        return insert_flags(hMenu, pos, flags, id, wide, 1);
+    }
+    WCHAR *w = NULL;
+    const void *text = NULL;
+    int wide_text = 0;
+    if (ansi && !(flags & (MF_BITMAP | MF_OWNERDRAW | MF_SEPARATOR))) {
+        w = aw_u2w(ansi, -1);
+        text = w;
+        wide_text = 1;
+    } else {
+        text = ansi;
+    }
+    BOOL ok = insert_flags(hMenu, pos, flags, id, text, wide_text);
+    free(w);
+    return ok;
+}
+
+API(user32, BOOL, AppendMenuA, (HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem))
+{
+    return insert_at(hMenu, (UINT)-1, uFlags | MF_BYPOSITION, uIDNewItem, lpNewItem, NULL, 0);
 }
 
 API(user32, BOOL, AppendMenuW, (HMENU hMenu, UINT uFlags, UINT_PTR uIDNewItem, LPCWSTR lpNewItem))
 {
-    return menu_append_flags(menu_get(hMenu), uFlags, uIDNewItem, lpNewItem);
+    return insert_at(hMenu, (UINT)-1, uFlags | MF_BYPOSITION, uIDNewItem, NULL, lpNewItem, 1);
 }
 
 API(user32, BOOL, InsertMenuA, (HMENU hMenu, UINT uPosition, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem))
 {
-    aw_menu *m = menu_get(hMenu);
-    if (!m)
-        return FALSE;
-    int pos = menu_find_pos(m, uPosition, uFlags);
-    if (pos < 0)
-        pos = m->n;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.id = (UINT)uIDNewItem;
-    it.fType = flags_type(uFlags) & ~MF_POPUP;
-    it.fState = flags_state(uFlags);
-    if (uFlags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)uIDNewItem;
-    } else if (uFlags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (uFlags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = uIDNewItem;
-    } else if (uFlags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)uIDNewItem;
-    } else {
-        it.fType |= MF_STRING;
-        if (lpNewItem)
-            it.text = aw_u2w(lpNewItem, -1);
-    }
-    if (!menu_insert_item(m, pos, &it)) {
-        free(it.text);
-        return FALSE;
-    }
-    return TRUE;
+    return insert_at(hMenu, uPosition, uFlags, uIDNewItem, lpNewItem, NULL, 0);
 }
 
 API(user32, BOOL, InsertMenuW, (HMENU hMenu, UINT uPosition, UINT uFlags, UINT_PTR uIDNewItem, LPCWSTR lpNewItem))
 {
-    aw_menu *m = menu_get(hMenu);
-    if (!m)
+    return insert_at(hMenu, uPosition, uFlags, uIDNewItem, NULL, lpNewItem, 1);
+}
+
+/* MENUITEMINFO insertion; text is the already-converted caption (or NULL) */
+static BOOL insert_mii(HMENU hMenu, UINT item, BOOL bypos, const AW_MENUITEMINFOW *mi, const WCHAR *text, int tlen)
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    if (!m || !mi)
         return FALSE;
-    int pos = menu_find_pos(m, uPosition, uFlags);
+    int pos = bypos ? (int)item : find_item(m, item, 0);
+    if (bypos && item > (UINT)m->n)
+        return FALSE;
     if (pos < 0)
-        pos = m->n;
+        pos = -1;
     aw_mitem it;
     memset(&it, 0, sizeof it);
-    it.id = (UINT)uIDNewItem;
-    it.fType = flags_type(uFlags) & ~MF_POPUP;
-    it.fState = flags_state(uFlags);
-    if (uFlags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)uIDNewItem;
-    } else if (uFlags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (uFlags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = uIDNewItem;
-    } else if (uFlags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)uIDNewItem;
-    } else {
-        it.fType |= MF_STRING;
-        if (lpNewItem)
-            item_set_text(&it, lpNewItem, -1);
+    UINT mask = mi->fMask;
+    it.fType = MFT_STRING;
+    if (mask & (MIIM_FTYPE | MIIM_TYPE))
+        it.fType = mi->fType & ITEM_TYPE_MASK;
+    if (mask & MIIM_ID)
+        it.id = mi->wID;
+    if (mask & MIIM_STATE)
+        it.fState = mi->fState & ITEM_STATE_MASK;
+    if (mask & MIIM_SUBMENU) {
+        it.sub = mi->hSubMenu;
+        it.popup = mi->hSubMenu != NULL;
     }
-    if (!menu_insert_item(m, pos, &it)) {
+    if (mask & MIIM_CHECKMARKS) {
+        it.bmpChecked = mi->hbmpChecked;
+        it.bmpUnchecked = mi->hbmpUnchecked;
+    }
+    if (mask & MIIM_DATA)
+        it.data = mi->dwItemData;
+    if (mask & MIIM_BITMAP)
+        it.bmpItem = mi->hbmpItem;
+    if (text && (mask & (MIIM_STRING | MIIM_TYPE)) && !(it.fType & (MFT_BITMAP | MFT_SEPARATOR | MFT_OWNERDRAW)))
+        item_set_text(&it, text, tlen);
+    if (it.popup && !aw_menu_get(it.sub)) {
         free(it.text);
         return FALSE;
     }
-    return TRUE;
-}
-
-static BOOL set_item_info_common(HMENU hMenu, UINT item, BOOL bypos, const AW_MENUITEMINFOW *src, int ansi)
-{
-    aw_menu *m = menu_get(hMenu);
-    if (!m)
+    if (!menu_insert(m, pos, &it)) {
+        free(it.text);
         return FALSE;
-    int pos = menu_find_pos(m, item, bypos ? MF_BYPOSITION : MF_BYCOMMAND);
-    if (pos < 0)
-        return FALSE;
-    aw_mitem *it = &m->it[pos];
-    UINT mask = src->fMask;
-    if (mask & MIIM_ID)
-        it->id = src->wID;
-    if (mask & MIIM_STATE) {
-        it->fState = src->fState & (MFS_CHECKED | MFS_GRAYED | MFS_DISABLED | MFS_HILITE | MFS_DEFAULT);
     }
-    if (mask & MIIM_SUBMENU) {
-        it->sub = src->hSubMenu;
-        if (src->hSubMenu)
-            it->fType |= MF_POPUP;
-        else
-            it->fType &= ~MF_POPUP;
-    }
-    if (mask & MIIM_CHECKMARKS) {
-        it->bmpChecked = src->hbmpChecked;
-        it->bmpUnchecked = src->hbmpUnchecked;
-    }
-    if (mask & MIIM_DATA)
-        it->data = src->dwItemData;
-    if (mask & MIIM_BITMAP)
-        it->bmpItem = src->hbmpItem;
-    if (mask & MIIM_FTYPE) {
-        it->fType = src->fType & (MFT_BITMAP | MFT_OWNERDRAW | MFT_SEPARATOR | MFT_MENUBARBREAK |
-                                  MFT_MENUBREAK | MFT_RADIOCHECK | MFT_RIGHTJUSTIFY | MFT_STRING);
-    }
-    if (mask & MIIM_TYPE) {
-        it->fType = src->fType & (MFT_BITMAP | MFT_OWNERDRAW | MFT_SEPARATOR | MFT_MENUBARBREAK |
-                                  MFT_MENUBREAK | MFT_RADIOCHECK | MFT_RIGHTJUSTIFY | MFT_STRING);
-        it->fState = src->fState & (MFS_CHECKED | MFS_GRAYED | MFS_DISABLED | MFS_HILITE | MFS_DEFAULT);
-    }
-    if ((mask & (MIIM_STRING | MIIM_TYPE)) && (it->fType & (MFT_BITMAP | MFT_SEPARATOR | MFT_OWNERDRAW)) == 0) {
-        if (src->dwTypeDataW) {
-            if (ansi) {
-                if (src->cch)
-                    it->text = aw_u2w((const char *)src->dwTypeDataW, (int)src->cch);
-                else
-                    it->text = aw_u2w((const char *)src->dwTypeDataW, -1);
-            } else {
-                if (src->cch)
-                    item_set_text(it, src->dwTypeDataW, (int)src->cch);
-                else
-                    item_set_text(it, src->dwTypeDataW, -1);
-            }
-        }
-    }
-    if (it->fType & MF_SEPARATOR)
-        it->fType |= MF_STRING;
     return TRUE;
 }
 
 API(user32, BOOL, InsertMenuItemW, (HMENU hMenu, UINT uItem, BOOL fByPosition, const AW_MENUITEMINFOW *lpmii))
 {
-    aw_menu *m = menu_get(hMenu);
-    if (!m || !lpmii)
+    if (!lpmii)
         return FALSE;
-    int pos = menu_find_pos(m, uItem, fByPosition ? MF_BYPOSITION : MF_BYCOMMAND);
-    if (!fByPosition || pos < 0)
-        pos = m->n;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.fType = MFT_STRING;
-    AW_MENUITEMINFOW tmp = *lpmii;
-    if (tmp.fMask & MIIM_ID)
-        it.id = tmp.wID;
-    if (tmp.fMask & MIIM_STATE)
-        it.fState = tmp.fState & (MFS_CHECKED | MFS_GRAYED | MFS_DISABLED | MFS_HILITE | MFS_DEFAULT);
-    if (tmp.fMask & MIIM_SUBMENU) {
-        it.sub = tmp.hSubMenu;
-        if (tmp.hSubMenu)
-            it.fType |= MF_POPUP;
-    }
-    if (tmp.fMask & MIIM_CHECKMARKS) {
-        it.bmpChecked = tmp.hbmpChecked;
-        it.bmpUnchecked = tmp.hbmpUnchecked;
-    }
-    if (tmp.fMask & MIIM_DATA)
-        it.data = tmp.dwItemData;
-    if (tmp.fMask & MIIM_BITMAP) {
-        it.bmpItem = tmp.hbmpItem;
-        if (tmp.hbmpItem)
-            it.fType |= MF_BITMAP;
-    }
-    if (tmp.fMask & (MIIM_FTYPE | MIIM_TYPE))
-        it.fType = tmp.fType & (MFT_BITMAP | MFT_OWNERDRAW | MFT_SEPARATOR | MFT_MENUBARBREAK |
-                                MFT_MENUBREAK | MFT_RADIOCHECK | MFT_RIGHTJUSTIFY | MFT_STRING);
-    if ((tmp.fMask & (MIIM_STRING | MIIM_TYPE)) && tmp.dwTypeDataW &&
-        (it.fType & (MFT_BITMAP | MFT_SEPARATOR | MFT_OWNERDRAW)) == 0) {
-        if (tmp.cch)
-            item_set_text(&it, tmp.dwTypeDataW, (int)tmp.cch);
-        else
-            item_set_text(&it, tmp.dwTypeDataW, -1);
-    }
-    if (!menu_insert_item(m, pos, &it)) {
-        free(it.text);
-        return FALSE;
-    }
-    return TRUE;
+    int tlen = lpmii->cch ? (int)lpmii->cch : -1;
+    return insert_mii(hMenu, uItem, fByPosition, lpmii, lpmii->dwTypeDataW, tlen);
 }
 
 API(user32, BOOL, InsertMenuItemA, (HMENU hMenu, UINT uItem, BOOL fByPosition, const AW_MENUITEMINFOA *lpmii))
@@ -474,148 +336,143 @@ API(user32, BOOL, InsertMenuItemA, (HMENU hMenu, UINT uItem, BOOL fByPosition, c
     w.hbmpChecked = lpmii->hbmpChecked;
     w.hbmpUnchecked = lpmii->hbmpUnchecked;
     w.dwItemData = lpmii->dwItemData;
-    w.dwTypeDataW = (LPWSTR)(uintptr_t)lpmii->dwTypeDataA;
-    w.cch = lpmii->cch;
-    w.hbmpItem = lpmii->hbmpItem;
-    return set_item_info_common(hMenu, uItem, fByPosition, &w, 1) &&
-           /* Insert needs a separate path for ANSI; reuse by converting text first */
-           1;
-}
-
-static BOOL insert_item_a(HMENU hMenu, UINT uItem, BOOL bypos, const AW_MENUITEMINFOA *lpmii)
-{
-    if (!lpmii)
-        return FALSE;
-    AW_MENUITEMINFOW w;
-    memset(&w, 0, sizeof w);
-    w.cbSize = lpmii->cbSize;
-    w.fMask = lpmii->fMask;
-    w.fType = lpmii->fType;
-    w.fState = lpmii->fState;
-    w.wID = lpmii->wID;
-    w.hSubMenu = lpmii->hSubMenu;
-    w.hbmpChecked = lpmii->hbmpChecked;
-    w.hbmpUnchecked = lpmii->hbmpUnchecked;
-    w.dwItemData = lpmii->dwItemData;
     w.cch = lpmii->cch;
     w.hbmpItem = lpmii->hbmpItem;
     WCHAR *t = NULL;
-    if ((w.fMask & (MIIM_STRING | MIIM_TYPE)) && lpmii->dwTypeDataA) {
+    if (lpmii->dwTypeDataA)
         t = aw_u2w(lpmii->dwTypeDataA, lpmii->cch ? (int)lpmii->cch : -1);
-        w.dwTypeDataW = t;
-    }
-    aw_menu *m = menu_get(hMenu);
-    if (!m) {
-        free(t);
-        return FALSE;
-    }
-    int pos = bypos ? menu_find_pos(m, uItem, MF_BYPOSITION) : -1;
-    if (pos < 0)
-        pos = m->n;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.fType = MFT_STRING;
-    if (w.fMask & MIIM_ID)
-        it.id = w.wID;
-    if (w.fMask & MIIM_STATE)
-        it.fState = w.fState & (MFS_CHECKED | MFS_GRAYED | MFS_DISABLED | MFS_HILITE | MFS_DEFAULT);
-    if (w.fMask & MIIM_SUBMENU) {
-        it.sub = w.hSubMenu;
-        if (w.hSubMenu)
-            it.fType |= MF_POPUP;
-    }
-    if (w.fMask & MIIM_CHECKMARKS) {
-        it.bmpChecked = w.hbmpChecked;
-        it.bmpUnchecked = w.hbmpUnchecked;
-    }
-    if (w.fMask & MIIM_DATA)
-        it.data = w.dwItemData;
-    if (w.fMask & MIIM_BITMAP) {
-        it.bmpItem = w.hbmpItem;
-        if (w.hbmpItem)
-            it.fType |= MF_BITMAP;
-    }
-    if (w.fMask & (MIIM_FTYPE | MIIM_TYPE))
-        it.fType = w.fType & (MFT_BITMAP | MFT_OWNERDRAW | MFT_SEPARATOR | MFT_MENUBARBREAK |
-                              MFT_MENUBREAK | MFT_RADIOCHECK | MFT_RIGHTJUSTIFY | MFT_STRING);
-    if (t && (it.fType & (MFT_BITMAP | MFT_SEPARATOR | MFT_OWNERDRAW)) == 0)
-        item_set_text(&it, t, -1);
+    BOOL ok = insert_mii(hMenu, uItem, fByPosition, &w, t, -1);
     free(t);
-    if (!menu_insert_item(m, pos, &it)) {
+    return ok;
+}
+
+/* ---- modification / removal ------------------------------------------ */
+static BOOL modify_at(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const void *text, int wide)
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    if (!m)
+        return FALSE;
+    int pos = (flags & MF_BYPOSITION) ? (position < (UINT)m->n ? (int)position : -1) : find_item(m, position, 0);
+    if (pos < 0)
+        return FALSE;
+    aw_mitem it;
+    if (!item_from_flags(&it, flags, id, text, wide))
+        return FALSE;
+    if (it.popup && !aw_menu_get(it.sub)) {
         free(it.text);
         return FALSE;
     }
+    /* the old item (its caption and, for DeleteMenu-like replacement, not its submenu) is released */
+    free(m->it[pos].text);
+    m->it[pos] = it;
     return TRUE;
 }
 
-/* The exported InsertMenuItemA must actually insert, not modify. */
-API(user32, BOOL, AlterInsertMenuItemA, (void)) { return FALSE; }
-
 API(user32, BOOL, ModifyMenuA, (HMENU hMenu, UINT uPosition, UINT uFlags, UINT_PTR uIDNewItem, LPCSTR lpNewItem))
 {
-    aw_menu *m = menu_get(hMenu);
-    if (!m)
-        return FALSE;
-    int pos = menu_find_pos(m, uPosition, uFlags);
-    if (pos < 0)
-        return FALSE;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.id = (UINT)uIDNewItem;
-    it.fType = flags_type(uFlags) & ~MF_POPUP;
-    it.fState = flags_state(uFlags);
-    if (uFlags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)uIDNewItem;
-    } else if (uFlags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (uFlags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = uIDNewItem;
-    } else if (uFlags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)uIDNewItem;
-    } else {
-        it.fType |= MF_STRING;
-        if (lpNewItem)
-            it.text = aw_u2w(lpNewItem, -1);
-    }
-    m->it[pos] = it;
-    return TRUE;
+    if (uFlags & (MF_BITMAP | MF_OWNERDRAW | MF_SEPARATOR) || !lpNewItem)
+        return modify_at(hMenu, uPosition, uFlags, uIDNewItem, lpNewItem, 0);
+    WCHAR *w = aw_u2w(lpNewItem, -1);
+    BOOL ok = modify_at(hMenu, uPosition, uFlags, uIDNewItem, w, 1);
+    free(w);
+    return ok;
 }
 
 API(user32, BOOL, ModifyMenuW, (HMENU hMenu, UINT uPosition, UINT uFlags, UINT_PTR uIDNewItem, LPCWSTR lpNewItem))
 {
-    aw_menu *m = menu_get(hMenu);
+    return modify_at(hMenu, uPosition, uFlags, uIDNewItem, lpNewItem, 1);
+}
+
+static BOOL remove_at(HMENU hMenu, UINT position, UINT flags, int destroy_sub)
+{
+    aw_menu *m = aw_menu_get(hMenu);
     if (!m)
         return FALSE;
-    int pos = menu_find_pos(m, uPosition, uFlags);
+    int pos = find_item(m, position, flags);
     if (pos < 0)
         return FALSE;
-    aw_mitem it;
-    memset(&it, 0, sizeof it);
-    it.id = (UINT)uIDNewItem;
-    it.fType = flags_type(uFlags) & ~MF_POPUP;
-    it.fState = flags_state(uFlags);
-    if (uFlags & MF_POPUP) {
-        it.fType |= MF_POPUP;
-        it.sub = (HMENU)uIDNewItem;
-    } else if (uFlags & MF_SEPARATOR) {
-        it.fType |= MF_SEPARATOR;
-    } else if (uFlags & MF_OWNERDRAW) {
-        it.fType |= MF_OWNERDRAW;
-        it.data = uIDNewItem;
-    } else if (uFlags & MF_BITMAP) {
-        it.fType |= MF_BITMAP;
-        it.bmpItem = (HBITMAP)uIDNewItem;
-    } else {
-        it.fType |= MF_STRING;
-        if (lpNewItem)
-            item_set_text(&it, lpNewItem, -1);
+    aw_mitem *it = &m->it[pos];
+    if (destroy_sub && it->popup && it->sub) {
+        aw_menu *sm = aw_menu_get(it->sub);
+        if (sm)
+            menu_free(sm);
     }
-    m->it[pos] = it;
+    free(it->text);
+    memmove(&m->it[pos], &m->it[pos + 1], (size_t)(m->n - pos - 1) * sizeof *m->it);
+    m->n--;
     return TRUE;
 }
 
-API(user32, BOOL, InsertMenuItemA2, (void)) { return FALSE; }
-/*__APPEND__*/
+API(user32, BOOL, RemoveMenu, (HMENU hMenu, UINT uPosition, UINT uFlags)) { return remove_at(hMenu, uPosition, uFlags, 0); }
+API(user32, BOOL, DeleteMenu, (HMENU hMenu, UINT uPosition, UINT uFlags)) { return remove_at(hMenu, uPosition, uFlags, 1); }
+
+/* ---- queries and state ----------------------------------------------- */
+API(user32, int, GetMenuItemCount, (HMENU hMenu))
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    return m ? m->n : -1;
+}
+
+API(user32, UINT, GetMenuItemID, (HMENU hMenu, int nPos))
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    if (!m || nPos < 0 || nPos >= m->n || m->it[nPos].popup)
+        return (UINT)-1;
+    return m->it[nPos].id;
+}
+
+API(user32, HMENU, GetSubMenu, (HMENU hMenu, int nPos))
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    if (!m || nPos < 0 || nPos >= m->n || !m->it[nPos].popup)
+        return NULL;
+    return aw_menu_get(m->it[nPos].sub) ? m->it[nPos].sub : NULL;
+}
+
+API(user32, UINT, GetMenuState, (HMENU hMenu, UINT uId, UINT uFlags))
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    int pos = m ? find_item(m, uId, uFlags) : -1;
+    if (pos < 0)
+        return (UINT)-1;
+    aw_mitem *it = &m->it[pos];
+    UINT r = 0;
+    if (it->fState & MFS_GRAYED) r |= MF_GRAYED | MF_DISABLED;
+    if (it->fState & MFS_CHECKED) r |= MF_CHECKED;
+    if (it->fState & MFS_HILITE) r |= MF_HILITE;
+    if (it->fState & MFS_DEFAULT) r |= MF_DEFAULT;
+    if (it->popup) r |= MF_POPUP;
+    if (it->fType & MFT_SEPARATOR) r |= MF_SEPARATOR;
+    if (it->fType & MFT_MENUBARBREAK) r |= MF_MENUBARBREAK;
+    if (it->fType & MFT_MENUBREAK) r |= MF_MENUBREAK;
+    return r;
+}
+
+/* sets the enable/check bits of an item; returns the previous MF_* state or -1 */
+static UINT set_state_bits(HMENU hMenu, UINT uId, UINT uFlags, UINT bits, int enable_mode)
+{
+    aw_menu *m = aw_menu_get(hMenu);
+    int pos = m ? find_item(m, uId, uFlags) : -1;
+    if (pos < 0)
+        return (UINT)-1;
+    aw_mitem *it = &m->it[pos];
+    UINT prev = (it->fState & MFS_GRAYED) ? MF_GRAYED : MF_ENABLED;
+    if (bits == MFS_CHECKED)
+        prev = (it->fState & MFS_CHECKED) ? MF_CHECKED : MF_UNCHECKED;
+    if (enable_mode == 1)
+        it->fState |= bits;
+    else if (enable_mode == 0)
+        it->fState &= ~bits;
+    return prev;
+}
+
+API(user32, DWORD, CheckMenuItem, (HMENU hMenu, UINT uIDCheckItem, UINT uCheck))
+{
+    return set_state_bits(hMenu, uIDCheckItem, uCheck & MF_BYPOSITION, MFS_CHECKED, (uCheck & MF_CHECKED) ? 1 : 0);
+}
+
+API(user32, BOOL, EnableMenuItem, (HMENU hMenu, UINT uIDEnableItem, UINT uEnable))
+{
+    int on = (uEnable & (MF_GRAYED | MF_DISABLED)) ? 1 : 0;
+    return (BOOL)set_state_bits(hMenu, uIDEnableItem, uEnable & MF_BYPOSITION, MFS_GRAYED, on);
+}
