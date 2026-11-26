@@ -1125,3 +1125,226 @@ API(advapi32, LONG, RegEnumValueA, (HKEY hkey, DWORD index, LPSTR name, DWORD *c
     reg_end();
     return rc;
 }
+
+/* ---- W variants --------------------------------------------------------------
+ * The store keeps string values as UTF-16 and the A functions convert at the boundary. The W
+ * functions below convert names and string data to UTF-8, call the A function, and convert the
+ * result back, so they share all the storage logic. Non-string data passes through unchanged. */
+static int is_string_type(DWORD t) { return t == REG_SZ || t == REG_EXPAND_SZ || t == REG_MULTI_SZ; }
+
+/* UTF-16 string data (REG_SZ/EXPAND_SZ: one string; MULTI_SZ: NUL-separated list) -> UTF-8 form */
+static char *wdata_to_utf8(DWORD type, const BYTE *data, DWORD cb, DWORD *out_cb)
+{
+    const WCHAR *w = (const WCHAR *)data;
+    DWORD nch = cb / sizeof(WCHAR);
+    if (type != REG_MULTI_SZ) {
+        DWORD len = 0;
+        while (len < nch && w[len])
+            len++;
+        char *u = aw_w2u(w, (int)len);
+        *out_cb = (DWORD)strlen(u) + 1;
+        return u;
+    }
+    char *u = malloc((size_t)nch * 3 + 2);
+    size_t used = 0;
+    for (DWORD i = 0; i < nch && w[i];) {
+        DWORD j = i;
+        while (j < nch && w[j])
+            j++;
+        char *seg = aw_w2u(w + i, (int)(j - i));
+        size_t l = strlen(seg);
+        memcpy(u + used, seg, l + 1);
+        used += l + 1;
+        free(seg);
+        i = j + 1;
+    }
+    u[used] = 0;
+    *out_cb = (DWORD)used + 1;
+    return u;
+}
+
+/* UTF-8 result of an A query -> UTF-16 bytes for the caller (terminators included) */
+static uint8_t *utf8_to_wdata(DWORD type, const char *u, DWORD ucb, DWORD *out_cb)
+{
+    if (type != REG_MULTI_SZ) {
+        size_t n = strnlen(u, ucb);
+        WCHAR *w = aw_u2w(u, (int)n);
+        size_t wl = aw_wcslen(w);
+        *out_cb = (DWORD)((wl + 1) * sizeof(WCHAR));
+        return (uint8_t *)w;
+    }
+    size_t cap = (size_t)ucb * sizeof(WCHAR) + sizeof(WCHAR);
+    uint8_t *o = malloc(cap);
+    size_t used = 0;
+    for (DWORD pos = 0; pos < ucb;) {
+        size_t seg = strnlen(u + pos, ucb - pos);
+        if (!seg)
+            break;
+        WCHAR *w = aw_u2w(u + pos, (int)seg);
+        size_t bytes = (aw_wcslen(w) + 1) * sizeof(WCHAR);
+        memcpy(o + used, w, bytes);
+        used += bytes;
+        free(w);
+        pos += (DWORD)seg + 1;
+    }
+    ((WCHAR *)(o + used))[0] = 0;
+    *out_cb = (DWORD)(used + sizeof(WCHAR));
+    return o;
+}
+
+/* copies a converted result to the caller's buffer with the usual size rules */
+static LONG deliver(const uint8_t *src, DWORD n, BYTE *data, DWORD *cb)
+{
+    if (!data) {
+        if (cb)
+            *cb = n;
+        return ERR_SUCCESS;
+    }
+    if (!cb)
+        return ERR_INVALID_PARAMETER;
+    if (*cb < n) {
+        *cb = n;
+        return ERR_MORE_DATA;
+    }
+    memcpy(data, src, n);
+    *cb = n;
+    return ERR_SUCCESS;
+}
+
+/* A-side name -> wide caller buffer of *cch characters */
+static LONG deliver_name(const char *name, WCHAR *out, DWORD *cch)
+{
+    WCHAR *w = aw_u2w(name, -1);
+    DWORD n = (DWORD)aw_wcslen(w);
+    LONG rc = ERR_SUCCESS;
+    if (*cch <= n) {
+        *cch = n;
+        rc = ERR_MORE_DATA;
+    } else {
+        memcpy(out, w, (n + 1) * sizeof(WCHAR));
+        *cch = n;
+    }
+    free(w);
+    return rc;
+}
+
+API(advapi32, LONG, RegOpenKeyExW, (HKEY hkey, LPCWSTR sub, DWORD opts, DWORD sam, HKEY *out))
+{
+    char *s = aw_w2u(sub, -1);
+    LONG rc = __aw_advapi32_RegOpenKeyExA(hkey, s ? s : "", opts, sam, out);
+    free(s);
+    return rc;
+}
+
+API(advapi32, LONG, RegCreateKeyExW, (HKEY hkey, LPCWSTR sub, DWORD reserved, WCHAR *cls, DWORD opts, DWORD sam,
+                                     void *secattr, HKEY *out, DWORD *disp))
+{
+    char *s = aw_w2u(sub, -1);
+    LONG rc = __aw_advapi32_RegCreateKeyExA(hkey, s ? s : "", reserved, NULL, opts, sam, secattr, out, disp);
+    free(s);
+    return rc;
+}
+
+API(advapi32, LONG, RegDeleteKeyW, (HKEY hkey, LPCWSTR sub))
+{
+    char *s = aw_w2u(sub, -1);
+    LONG rc = __aw_advapi32_RegDeleteKeyA(hkey, s ? s : "");
+    free(s);
+    return rc;
+}
+
+API(advapi32, LONG, RegDeleteValueW, (HKEY hkey, LPCWSTR name))
+{
+    char *n = aw_w2u(name, -1);
+    LONG rc = __aw_advapi32_RegDeleteValueA(hkey, n ? n : "");
+    free(n);
+    return rc;
+}
+
+API(advapi32, LONG, RegSetValueExW, (HKEY hkey, LPCWSTR name, DWORD reserved, DWORD type, const BYTE *data, DWORD cb))
+{
+    char *n = aw_w2u(name, -1);
+    LONG rc;
+    if (data && is_string_type(type)) {
+        DWORD ucb = 0;
+        char *u = wdata_to_utf8(type, data, cb, &ucb);
+        rc = __aw_advapi32_RegSetValueExA(hkey, n ? n : "", reserved, type, (const BYTE *)u, ucb);
+        free(u);
+    } else {
+        rc = __aw_advapi32_RegSetValueExA(hkey, n ? n : "", reserved, type, data, cb);
+    }
+    free(n);
+    return rc;
+}
+
+API(advapi32, LONG, RegQueryValueExW, (HKEY hkey, LPCWSTR name, DWORD *reserved, DWORD *type, BYTE *data, DWORD *cb))
+{
+    char *n = aw_w2u(name, -1);
+    const char *nm = n ? n : "";
+    DWORD t = 0, ucb = 0;
+    LONG rc = __aw_advapi32_RegQueryValueExA(hkey, nm, reserved, &t, NULL, &ucb);
+    if (rc == ERR_SUCCESS && is_string_type(t)) {
+        char *u = malloc(ucb ? ucb : 1);
+        rc = __aw_advapi32_RegQueryValueExA(hkey, nm, reserved, &t, (BYTE *)u, &ucb);
+        if (rc == ERR_SUCCESS) {
+            DWORD wcb = 0;
+            uint8_t *w = utf8_to_wdata(t, u, ucb, &wcb);
+            rc = deliver(w, wcb, data, cb);
+            if (type)
+                *type = t;
+            free(w);
+        }
+        free(u);
+    } else if (rc == ERR_SUCCESS) {
+        /* non-string: a second query with the caller's buffer keeps the A semantics exact */
+        rc = __aw_advapi32_RegQueryValueExA(hkey, nm, reserved, type, data, cb);
+    }
+    free(n);
+    return rc;
+}
+
+API(advapi32, LONG, RegEnumKeyExW, (HKEY hkey, DWORD index, WCHAR *name, DWORD *cchName, DWORD *reserved, WCHAR *cls,
+                                   DWORD *cchCls, FILETIME *ft))
+{
+    (void)cls;
+    (void)cchCls;
+    DWORD tcch = *cchName * 4 + 4;
+    char *tmp = malloc(tcch);
+    LONG rc = __aw_advapi32_RegEnumKeyExA(hkey, index, tmp, &tcch, reserved, NULL, NULL, ft);
+    if (rc == ERR_SUCCESS)
+        rc = deliver_name(tmp, name, cchName);
+    free(tmp);
+    return rc;
+}
+
+API(advapi32, LONG, RegEnumValueW, (HKEY hkey, DWORD index, WCHAR *name, DWORD *cchName, DWORD *reserved, DWORD *type,
+                                   BYTE *data, DWORD *cb))
+{
+    DWORD tcch = *cchName * 4 + 4, tcch0 = tcch, t = 0, ucb = 0;
+    char *tmp = malloc(tcch);
+    LONG rc = __aw_advapi32_RegEnumValueA(hkey, index, tmp, &tcch, reserved, &t, NULL, &ucb);
+    if (rc == ERR_SUCCESS) {
+        char *u = malloc(ucb ? ucb : 1);
+        DWORD ucb2 = ucb;
+        tcch = tcch0; /* the first call shrank the name length: give the full buffer again */
+        rc = __aw_advapi32_RegEnumValueA(hkey, index, tmp, &tcch, reserved, &t, (BYTE *)u, &ucb2);
+        if (rc == ERR_SUCCESS) {
+            rc = deliver_name(tmp, name, cchName);
+            if (type)
+                *type = t;
+            if (rc == ERR_SUCCESS && (data || cb)) {
+                if (is_string_type(t)) {
+                    DWORD wcb = 0;
+                    uint8_t *w = utf8_to_wdata(t, u, ucb2, &wcb);
+                    rc = deliver(w, wcb, data, cb);
+                    free(w);
+                } else {
+                    rc = deliver((const uint8_t *)u, ucb2, data, cb);
+                }
+            }
+        }
+        free(u);
+    }
+    free(tmp);
+    return rc;
+}

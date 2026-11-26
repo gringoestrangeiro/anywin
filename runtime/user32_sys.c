@@ -138,3 +138,140 @@ API(user32, UINT, GetDpiForWindow, (HWND h)) { (void)h; return 96; }
 API(user32, UINT, GetDpiForSystem, (void)) { return 96; }
 API(user32, BOOL, SetProcessDPIAware, (void)) { return TRUE; }
 API(user32, BOOL, IsProcessDPIAware, (void)) { return TRUE; }
+
+/* ---- accelerator tables ------------------------------------------------- */
+/* ACCEL is 6 bytes on Windows (fVirt, key, cmd) with no padding */
+typedef struct __attribute__((packed)) { BYTE fVirt; WORD key; WORD cmd; } ACCEL_W;
+struct accel_table { int count; ACCEL_W entries[]; };
+
+API(user32, HACCEL, CreateAcceleratorTableW, (ACCEL_W * entries, int count))
+{
+    if (count <= 0 || !entries) {
+        aw_set_last_error(87);
+        return NULL;
+    }
+    struct accel_table *t = malloc(sizeof *t + (size_t)count * sizeof(ACCEL_W));
+    if (!t) {
+        aw_set_last_error(8);
+        return NULL;
+    }
+    t->count = count;
+    memcpy(t->entries, entries, (size_t)count * sizeof(ACCEL_W));
+    aw_set_last_error(0);
+    return (HACCEL)t;
+}
+
+API(user32, BOOL, DestroyAcceleratorTable, (HACCEL table))
+{
+    if (!table) {
+        aw_set_last_error(6);
+        return FALSE;
+    }
+    free(table);
+    return TRUE;
+}
+
+/* Keyboard translation is not performed: the message always reaches the window procedure. */
+API(user32, int, TranslateAcceleratorW, (HWND hwnd, HACCEL table, void *msg))
+{
+    (void)hwnd;
+    (void)table;
+    (void)msg;
+    return 0;
+}
+
+/* ---- SystemParametersInfo ----------------------------------------------- */
+/* LOGFONTW, x64 layout */
+typedef struct {
+    LONG lfHeight, lfWidth, lfEscapement, lfOrientation, lfWeight;
+    BYTE lfItalic, lfUnderline, lfStrikeOut, lfCharSet, lfOutPrecision, lfClipPrecision, lfQuality, lfPitchAndFamily;
+    WCHAR lfFaceName[32];
+} LOGFONT_W;
+
+/* NONCLIENTMETRICSW, x64 layout */
+typedef struct {
+    UINT cbSize;
+    int iBorderWidth, iScrollWidth, iScrollHeight, iCaptionWidth, iCaptionHeight;
+    LOGFONT_W lfCaptionFont;
+    int iSmCaptionWidth, iSmCaptionHeight;
+    LOGFONT_W lfSmCaptionFont;
+    int iMenuWidth, iMenuHeight;
+    LOGFONT_W lfMenuFont, lfStatusFont, lfMessageFont;
+    int iPaddedBorderWidth;
+} NONCLIENTMETRICS_W;
+
+/* ICONMETRICSW, x64 layout */
+typedef struct {
+    UINT cbSize;
+    int iHorzSpacing, iVertSpacing, iTitleWrap;
+    LOGFONT_W lfFont;
+} ICONMETRICS_W;
+
+static void default_font(LOGFONT_W *f, LONG height)
+{
+    memset(f, 0, sizeof *f);
+    f->lfHeight = height;
+    f->lfWeight = 400;
+    f->lfCharSet = 1; /* DEFAULT_CHARSET */
+    f->lfQuality = 5; /* CLEARTYPE_QUALITY */
+    const char *face = "Segoe UI"; /* font.c maps this name to the sans family */
+    for (size_t i = 0; face[i]; i++)
+        f->lfFaceName[i] = (WCHAR)(unsigned char)face[i];
+}
+
+API(user32, BOOL, SystemParametersInfoW, (UINT action, UINT param, void *pv, UINT winini))
+{
+    (void)param;
+    (void)winini;
+    switch (action) {
+    case 0x0030: /* SPI_GETWORKAREA */
+        if (!pv)
+            break;
+        ((RECT *)pv)->left = 0;
+        ((RECT *)pv)->top = 0;
+        ((RECT *)pv)->right = __aw_user32_GetSystemMetrics(0);
+        ((RECT *)pv)->bottom = __aw_user32_GetSystemMetrics(1);
+        return TRUE;
+    case 0x0029: { /* SPI_GETNONCLIENTMETRICS */
+        NONCLIENTMETRICS_W *m = pv;
+        if (!m || m->cbSize < sizeof *m)
+            break;
+        m->iBorderWidth = 1;
+        m->iScrollWidth = m->iScrollHeight = 17;
+        m->iCaptionWidth = m->iCaptionHeight = 19;
+        m->iSmCaptionWidth = m->iSmCaptionHeight = 15;
+        m->iMenuWidth = m->iMenuHeight = 19;
+        m->iPaddedBorderWidth = 0;
+        default_font(&m->lfCaptionFont, -15);
+        default_font(&m->lfSmCaptionFont, -11);
+        default_font(&m->lfMenuFont, -12);
+        default_font(&m->lfStatusFont, -12);
+        default_font(&m->lfMessageFont, -12);
+        return TRUE;
+    }
+    case 0x002D: { /* SPI_GETICONMETRICS */
+        ICONMETRICS_W *m = pv;
+        if (!m || m->cbSize < sizeof *m)
+            break;
+        m->iHorzSpacing = 75;
+        m->iVertSpacing = 75;
+        m->iTitleWrap = 1;
+        default_font(&m->lfFont, -12);
+        return TRUE;
+    }
+    case 0x001F: /* SPI_GETICONTITLELOGFONT */
+        if (!pv)
+            break;
+        default_font(pv, -12);
+        return TRUE;
+    }
+    /* a getter that could not fill its buffer fails; setters and other actions are accepted and
+     * not persisted */
+    static const UINT getters[] = {0x0030, 0x0029, 0x002D, 0x001F};
+    for (size_t i = 0; i < sizeof getters / sizeof *getters; i++)
+        if (action == getters[i]) {
+            aw_set_last_error(87);
+            return FALSE;
+        }
+    return TRUE;
+}

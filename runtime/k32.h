@@ -27,6 +27,7 @@ void aw_wait_unlock(void);
 void aw_file_close(aw_object *o);         /* CloseHandle for H_FILE / H_FIND / H_MAPPING */
 void aw_process_close(aw_object *o);      /* CloseHandle for H_PROCESS: frees *aw_obj_ext() */
 int aw_process_poll(aw_object *o);        /* child reaping for waits; nonzero when signaled */
+void aw_find_release(void *state);        /* file.c: frees a FindFirstFile state */
 int aw_apc_run(DWORD tid);                /* run queued APCs; none can be queued in Stage 1 */
 
 /* ---- kernel32.c services --------------------------------------------- */

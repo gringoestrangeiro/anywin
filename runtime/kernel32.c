@@ -1013,6 +1013,10 @@ void aw_file_close(aw_object *o)
 {
     int fd = aw_obj_fd(o);
     char **path = aw_obj_path(o);
+    if (aw_obj_type(o) == H_FIND) {
+        aw_find_release(*aw_obj_ext(o)); /* file.c: DIR and pattern of a FindFirstFile handle */
+        *aw_obj_ext(o) = NULL;
+    }
     if (fd >= 0) {
         close(fd);
         aw_obj_set_fd(o, -1);

@@ -748,3 +748,20 @@ void aw_seh_init(void)
     sigaction(SIGFPE, &sa, NULL);
 }
 
+
+/* kernel32 names for the unwind helpers Rust and MinGW code import from KERNEL32 */
+API(kernel32, int, __C_specific_handler, (EXCEPTION_RECORD * rec, uint64_t frame, CONTEXT *ctx, DISPATCHER_CONTEXT *dc))
+{
+    return __aw_msvcrt___C_specific_handler(rec, frame, ctx, dc);
+}
+
+API(kernel32, RUNTIME_FUNCTION *, RtlLookupFunctionEntry, (uint64_t pc, uint64_t *imagebase, void *history))
+{
+    return __aw_ntdll_RtlLookupFunctionEntry(pc, imagebase, history);
+}
+
+API(kernel32, void *, RtlVirtualUnwind, (uint32_t type, uint64_t imagebase, uint64_t pc, RUNTIME_FUNCTION *rf,
+                                         CONTEXT *ctx, void **hdata, uint64_t *est, void *ctxptrs))
+{
+    return __aw_ntdll_RtlVirtualUnwind(type, imagebase, pc, rf, ctx, hdata, est, ctxptrs);
+}

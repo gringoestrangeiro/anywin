@@ -39,3 +39,10 @@ runtime/advapi32.c
 runtime/shell32.c
 runtime/seh.c
 runtime/ws2_32.c
+runtime/kernel32_ext.c
+runtime/file.c
+runtime/com.c
+runtime/version.c
+runtime/services.c
+runtime/shell_exec.c
+runtime/toolhelp.c
