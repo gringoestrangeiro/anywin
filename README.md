@@ -10,15 +10,15 @@ No Wine, no PE loader at runtime, no compatibility layer at runtime.
 
 ## Coverage
 
-[![Windows APIs implemented](docs/img/badge-api-754462249a.svg)](docs/COVERAGE.md)
-[![sample imports](docs/img/badge-imports-754462249a.svg)](docs/COVERAGE.md)
-[![sample programs](docs/img/badge-programs-754462249a.svg)](docs/COVERAGE.md)
-[![runtime exports](docs/img/badge-apis-754462249a.svg)](docs/COVERAGE.md)
+[![Windows APIs implemented](docs/img/badge-api-b26320f112.svg)](docs/COVERAGE.md)
+[![sample imports](docs/img/badge-imports-b26320f112.svg)](docs/COVERAGE.md)
+[![sample programs](docs/img/badge-programs-b26320f112.svg)](docs/COVERAGE.md)
+[![runtime exports](docs/img/badge-apis-b26320f112.svg)](docs/COVERAGE.md)
 
-[![coverage map](docs/img/progress-754462249a.svg)](docs/COVERAGE.md)
+[![coverage map](docs/img/progress-b26320f112.svg)](docs/COVERAGE.md)
 
 <!-- coverage-text:start -->
-**Windows APIs implemented: 461 / 18,319 (2.52%).** Started modules: 461 / 3,837 (12.01%). Sample-program imports: 188 / 188 (100.00%). Runtime exports: 561.
+**Windows APIs implemented: 545 / 18,319 (2.98%).** Started modules: 545 / 4,824 (11.30%). Sample-program imports: 315 / 315 (100.00%). Runtime exports: 649.
 <!-- coverage-text:end -->
 
 <sub>One square per item, in the style of the AnyPS5 progress map. The denominator is Microsoft's
@@ -174,7 +174,7 @@ make coverage  # regenerate the API coverage map from the built sample programs
 ```
 
 Package tests (run individually): `core_env`, `core_stdio`, `core_gui`, `core_gui_controls`,
-`core_menu`, `core_scroll`, `core_registry`, `core_seh`, `core_tray`, `gdi_render`,
+`core_menu`, `core_scroll`, `core_registry`, `core_winapi`, `core_seh`, `core_tray`, `gdi_render`,
 `region_unit`, `listview_unit`, `x11_font`, `winsock`. `tests/bench.py` is the Wine comparison, not part of `make test`. Tests that open windows always use `xvfb-run`.
 
 ## Known issues

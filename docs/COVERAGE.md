@@ -6,10 +6,10 @@ Inventory: **Microsoft.Windows.SDK.Win32Metadata 71.0.45-preview** ([release](ht
 
 | Metric | Implemented | Total | Coverage |
 |---|---:|---:|---:|
-| Windows APIs | 461 | 18,319 | 2.52% |
-| Windows APIs in started modules | 461 | 3,837 | 12.01% |
-| Sample-program imports | 188 | 188 | 100.00% |
-| Runtime exports (including C runtime) | 561 | 561 | 100.00% |
+| Windows APIs | 545 | 18,319 | 2.98% |
+| Windows APIs in started modules | 545 | 4,824 | 11.30% |
+| Sample-program imports | 315 | 315 | 100.00% |
+| Runtime exports (including C runtime) | 649 | 649 | 100.00% |
 
 The first map section is the full Win32 inventory. The second zooms in on the modules where anywin has started. Green means an implementation exists in the runtime; grey means the function is known but not implemented. The third section is the union of imports across the sample programs, so it answers a different question: whether those particular programs can resolve everything they import.
 
@@ -17,22 +17,26 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 
 | Module | Windows APIs | Implemented | Coverage |
 |---|---:|---:|---:|
-| `user32` | 780 | 224 | 28.7% |
-| `kernel32` | 1585 | 130 | 8.2% |
+| `user32` | 780 | 228 | 29.2% |
+| `kernel32` | 1585 | 172 | 10.8% |
 | `gdi32` | 431 | 51 | 11.8% |
 | `ws2_32` | 160 | 45 | 28.1% |
-| `advapi32` | 624 | 9 | 1.4% |
-| `shell32` | 257 | 2 | 0.8% |
+| `advapi32` | 624 | 26 | 4.2% |
+| `ole32` | 319 | 6 | 1.9% |
+| `shell32` | 257 | 6 | 2.3% |
+| `oleaut32` | 405 | 5 | 1.2% |
+| `version` | 14 | 3 | 21.4% |
+| `comctl32` | 115 | 1 | 0.9% |
+| `ntdll` | 72 | 1 | 1.4% |
+| `wintrust` | 62 | 1 | 1.6% |
 | `gdiplus` | 629 | 0 | 0.0% |
 | `msajapi` | 547 | 0 | 0.0% |
 | `icuuc` | 542 | 0 | 0.0% |
 | `rpcrt4` | 447 | 0 | 0.0% |
 | `icuin` | 416 | 0 | 0.0% |
-| `oleaut32` | 405 | 0 | 0.0% |
 | `shlwapi` | 360 | 0 | 0.0% |
 | `opengl32` | 355 | 0 | 0.0% |
 | `setupapi` | 334 | 0 | 0.0% |
-| `ole32` | 319 | 0 | 0.0% |
 | `wininet` | 296 | 0 | 0.0% |
 | `clusapi` | 281 | 0 | 0.0% |
 | `msi` | 264 | 0 | 0.0% |
@@ -53,7 +57,6 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `odbc32` | 154 | 0 | 0.0% |
 | `mfplat` | 147 | 0 | 0.0% |
 | `resutils` | 120 | 0 | 0.0% |
-| `comctl32` | 115 | 0 | 0.0% |
 | `mprapi` | 112 | 0 | 0.0% |
 | `p2p` | 108 | 0 | 0.0% |
 | `pdh` | 98 | 0 | 0.0% |
@@ -72,14 +75,12 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `urlmon` | 77 | 0 | 0.0% |
 | `uxtheme` | 77 | 0 | 0.0% |
 | `rtm` | 76 | 0 | 0.0% |
-| `ntdll` | 72 | 0 | 0.0% |
 | `winscard` | 70 | 0 | 0.0% |
 | `wtsapi32` | 70 | 0 | 0.0% |
 | `mapi32` | 66 | 0 | 0.0% |
 | `winhvplatform` | 66 | 0 | 0.0% |
 | `dnsapi` | 65 | 0 | 0.0% |
 | `mf` | 62 | 0 | 0.0% |
-| `wintrust` | 62 | 0 | 0.0% |
 | `rpcns4` | 61 | 0 | 0.0% |
 | `avifil32` | 60 | 0 | 0.0% |
 | `wlanapi` | 60 | 0 | 0.0% |
@@ -171,7 +172,6 @@ The first map section is the full Win32 inventory. The second zooms in on the mo
 | `computestorage` | 14 | 0 | 0.0% |
 | `eappcfg` | 14 | 0 | 0.0% |
 | `t2embed` | 14 | 0 | 0.0% |
-| `version` | 14 | 0 | 0.0% |
 | `d2d1` | 13 | 0 | 0.0% |
 | `vmdevicehost` | 13 | 0 | 0.0% |
 | `wdstptc` | 13 | 0 | 0.0% |
@@ -340,15 +340,17 @@ These runtime exports are either C runtime names or functions that Microsoft's m
 
 | Module | Exports | Functions |
 |---|---:|---|
-| `kernel32` | 2 | `FreeEnvironmentStrings`, `GetEnvironmentStringsA` |
-| `msvcrt` | 92 | `_Exit`, `__C_specific_handler`, `___lc_codepage_func`, `___mb_cur_max_func`, `__acrt_iob_func`, `__getmainargs`, `__initenv`, `__iob_func` … (+84) |
-| `ntdll` | 2 | `RtlLookupFunctionEntry`, `RtlVirtualUnwind` |
+| `combase` | 1 | `CoTaskMemFree` |
+| `kernel32` | 3 | `FreeEnvironmentStrings`, `GetEnvironmentStringsA`, `__C_specific_handler` |
+| `msvcrt` | 93 | `_Exit`, `__C_specific_handler`, `___lc_codepage_func`, `___mb_cur_max_func`, `__acrt_iob_func`, `__getmainargs`, `__initenv`, `__iob_func` … (+85) |
+| `ntdll` | 3 | `NtWriteFile`, `RtlLookupFunctionEntry`, `RtlVirtualUnwind` |
 | `ws2_32` | 4 | `InetNtopA`, `InetPtonA`, `htonll`, `ntohll` |
 
 ## Sample programs
 
 | Program | Imports | Implemented | Coverage |
 |---|---:|---:|---:|
+| `build/StartupSentinel.exe` | 190 | 190 | 100.0% |
 | `build/bench_cpu.exe` | 48 | 48 | 100.0% |
 | `build/core_env.exe` | 20 | 20 | 100.0% |
 | `build/core_gui_controls.exe` | 65 | 65 | 100.0% |
@@ -358,6 +360,7 @@ These runtime exports are either C runtime names or functions that Microsoft's m
 | `build/core_scroll_probe.exe` | 64 | 64 | 100.0% |
 | `build/core_stdio_probe.exe` | 61 | 61 | 100.0% |
 | `build/core_tray_probe.exe` | 48 | 48 | 100.0% |
+| `build/core_winapi_probe.exe` | 92 | 92 | 100.0% |
 | `build/hello_console.exe` | 46 | 46 | 100.0% |
 | `build/hello_gui.exe` | 68 | 68 | 100.0% |
 | `build/nethello.exe` | 48 | 48 | 100.0% |

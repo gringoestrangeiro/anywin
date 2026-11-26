@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-26T10:58:12Z",
+ "generated": "2026-11-26T13:03:51Z",
  "inventory": {
   "source": "Microsoft.Windows.SDK.Win32Metadata",
   "version": "71.0.45-preview",
@@ -10,40 +10,40 @@
   "functions": 18319
  },
  "win32_coverage": {
-  "implemented": 461,
+  "implemented": 545,
   "total": 18319,
-  "pct": 2.52
+  "pct": 2.98
  },
  "started_modules": {
-  "implemented": 461,
-  "total": 3837,
-  "pct": 12.01
+  "implemented": 545,
+  "total": 4824,
+  "pct": 11.3
  },
  "runtime": {
-  "exports": 561,
-  "modules": 8,
-  "matched": 461,
-  "outside_inventory": 100
+  "exports": 649,
+  "modules": 14,
+  "matched": 545,
+  "outside_inventory": 104
  },
  "sample_imports": {
-  "covered": 188,
-  "total": 188,
+  "covered": 315,
+  "total": 315,
   "pct": 100.0
  },
- "sample_programs": 15,
+ "sample_programs": 17,
  "module_rows": [
   {
    "module": "user32",
    "apis": 780,
-   "implemented": 224,
-   "pct": 28.72,
+   "implemented": 228,
+   "pct": 29.23,
    "started": true
   },
   {
    "module": "kernel32",
    "apis": 1585,
-   "implemented": 130,
-   "pct": 8.2,
+   "implemented": 172,
+   "pct": 10.85,
    "started": true
   },
   {
@@ -63,15 +63,57 @@
   {
    "module": "advapi32",
    "apis": 624,
-   "implemented": 9,
-   "pct": 1.44,
+   "implemented": 26,
+   "pct": 4.17,
+   "started": true
+  },
+  {
+   "module": "ole32",
+   "apis": 319,
+   "implemented": 6,
+   "pct": 1.88,
    "started": true
   },
   {
    "module": "shell32",
    "apis": 257,
-   "implemented": 2,
-   "pct": 0.78,
+   "implemented": 6,
+   "pct": 2.33,
+   "started": true
+  },
+  {
+   "module": "oleaut32",
+   "apis": 405,
+   "implemented": 5,
+   "pct": 1.23,
+   "started": true
+  },
+  {
+   "module": "version",
+   "apis": 14,
+   "implemented": 3,
+   "pct": 21.43,
+   "started": true
+  },
+  {
+   "module": "comctl32",
+   "apis": 115,
+   "implemented": 1,
+   "pct": 0.87,
+   "started": true
+  },
+  {
+   "module": "ntdll",
+   "apis": 72,
+   "implemented": 1,
+   "pct": 1.39,
+   "started": true
+  },
+  {
+   "module": "wintrust",
+   "apis": 62,
+   "implemented": 1,
+   "pct": 1.61,
    "started": true
   },
   {
@@ -110,13 +152,6 @@
    "started": false
   },
   {
-   "module": "oleaut32",
-   "apis": 405,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
    "module": "shlwapi",
    "apis": 360,
    "implemented": 0,
@@ -133,13 +168,6 @@
   {
    "module": "setupapi",
    "apis": 334,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
-   "module": "ole32",
-   "apis": 319,
    "implemented": 0,
    "pct": 0.0,
    "started": false
@@ -285,13 +313,6 @@
    "started": false
   },
   {
-   "module": "comctl32",
-   "apis": 115,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
    "module": "mprapi",
    "apis": 112,
    "implemented": 0,
@@ -418,13 +439,6 @@
    "started": false
   },
   {
-   "module": "ntdll",
-   "apis": 72,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
    "module": "winscard",
    "apis": 70,
    "implemented": 0,
@@ -461,13 +475,6 @@
   },
   {
    "module": "mf",
-   "apis": 62,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
-   "module": "wintrust",
    "apis": 62,
    "implemented": 0,
    "pct": 0.0,
@@ -1105,13 +1112,6 @@
   },
   {
    "module": "t2embed",
-   "apis": 14,
-   "implemented": 0,
-   "pct": 0.0,
-   "started": false
-  },
-  {
-   "module": "version",
    "apis": 14,
    "implemented": 0,
    "pct": 0.0,
@@ -2247,6 +2247,12 @@
  ],
  "program_rows": [
   {
+   "program": "build/StartupSentinel.exe",
+   "imports": 190,
+   "covered": 190,
+   "pct": 100.0
+  },
+  {
    "program": "build/bench_cpu.exe",
    "imports": 48,
    "covered": 48,
@@ -2301,6 +2307,12 @@
    "pct": 100.0
   },
   {
+   "program": "build/core_winapi_probe.exe",
+   "imports": 92,
+   "covered": 92,
+   "pct": 100.0
+  },
+  {
    "program": "build/hello_console.exe",
    "imports": 46,
    "covered": 46,
@@ -2338,9 +2350,13 @@
   }
  ],
  "implemented_outside_inventory": {
+  "combase": [
+   "CoTaskMemFree"
+  ],
   "kernel32": [
    "FreeEnvironmentStrings",
-   "GetEnvironmentStringsA"
+   "GetEnvironmentStringsA",
+   "__C_specific_handler"
   ],
   "msvcrt": [
    "_Exit",
@@ -2374,6 +2390,7 @@
    "_filbuf",
    "_flsbuf",
    "_fmode",
+   "_fpreset",
    "_initialize_narrow_environment",
    "_initterm",
    "_initterm_e",
@@ -2437,6 +2454,7 @@
    "wcslen"
   ],
   "ntdll": [
+   "NtWriteFile",
    "RtlLookupFunctionEntry",
    "RtlVirtualUnwind"
   ],
