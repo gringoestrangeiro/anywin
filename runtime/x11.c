@@ -1734,14 +1734,14 @@ uint32_t plat_tray_add(int *icon_size) {
     prop_write(icon, A(A_XEMBED_INFO), A(A_XEMBED_INFO), 32, xe, 2);
     uint32_t d[5] = {0, 0, icon, 0, 0}; /* CurrentTime, SYSTEM_TRAY_REQUEST_DOCK, icon */
     send_cm(owner, 0, owner, A(A_NET_SYSTEM_TRAY_OPCODE), d);
-    rq_begin(OP_MapWindow, 0);
-    w32(icon);
-    rq_end();
+    /* XEmbed: the embedder reparents and maps the icon (XEMBED_MAPPED in _XEMBED_INFO).  Mapping
+     * a root child ourselves makes the window manager manage it as a regular top-level window,
+     * which later breaks its window stack when the tray steals the window. */
 
     struct xwin *rec = win_add(icon, PLAT_WIN_POPUP);
     rec->w = sz;
     rec->h = sz;
-    rec->mapped = 1;
+    rec->mapped = 0;
     X.tray[X.ntray].win = icon;
     X.tray[X.ntray].size = sz;
     X.tray[X.ntray].bg = NULL;
